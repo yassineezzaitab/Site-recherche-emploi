@@ -1,0 +1,476 @@
+// Job Match Platform — Prisma schema
+//
+// Database choice: PostgreSQL.
+// Justification: relational integrity between users/profiles/jobs/matches is
+// central to this product (foreign keys, cascading deletes for RGPD erasure,
+// transactional writes when ingesting job batches), the data is structured
+// and query-heavy (filtering, sorting, joins across jobs/companies/matches),
+// and Postgres gives us JSON columns (for flexible resume-extraction payloads)
+// without giving up relational guarantees. It is free, self-hostable, and
+// has first-class support on every major deployment target.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Auth / Users
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  emailVerified DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // RGPD consent trail
+  consentAcceptedAt DateTime?
+  consentVersion    String?
+  marketingOptIn    Boolean   @default(false)
+
+  role Role @default(USER)
+
+  profile       Profile?
+  resumes       Resume[]
+  savedJobs     SavedJob[]
+  applications  Application[]
+  alerts        Alert[]
+  notifications Notification[]
+
+  @@index([email])
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+// NextAuth uses stateless JWT sessions here (CredentialsProvider is
+// incompatible with NextAuth's database session strategy), so no session
+// table is needed. The JWT embeds the user id and is signed with
+// NEXTAUTH_SECRET.
+
+// ---------------------------------------------------------------------------
+// Profile — the structured "professional identity" built from the CV + user input
+// ---------------------------------------------------------------------------
+
+model Profile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Identity
+  firstName String?
+  lastName  String?
+  phone     String?
+  city      String?
+  postcode  String?
+  country   String  @default("FR")
+  latitude  Float?
+  longitude Float?
+  headline  String? // e.g. "Étudiant ingénieur — recherche alternance"
+  summary   String? @db.Text
+
+  // Search criteria
+  desiredTitles    String[] // metiers recherches
+  sectors          String[]
+  contractTypes    String[] // CDI, CDD, STAGE, ALTERNANCE, INTERIM, MISSION
+  minSalaryMonthly Int? // in EUR, monthly gross equivalent
+  maxDistanceKm    Int? @default(25)
+  remotePreference RemotePreference @default(NO_PREFERENCE)
+  experienceLevel  ExperienceLevel  @default(ANY)
+
+  // Availability
+  availableDays   String[] // MON..SUN
+  availableSlots  String[] // MORNING, AFTERNOON, EVENING, NIGHT, WEEKEND
+  hoursPerWeekMin Int?
+  hoursPerWeekMax Int?
+  startDate       DateTime?
+
+  // Mobility
+  hasCar          Boolean @default(false)
+  hasScooter      Boolean @default(false)
+  hasBike         Boolean @default(false)
+  usesPublicTransit Boolean @default(true)
+  mobilityNotes   String?
+
+  // Free-text constraints captured from onboarding / NL search
+  constraints String?
+
+  skills      ProfileSkill[]
+  experiences Experience[]
+  educations  Education[]
+  languages   ProfileLanguage[]
+  certifications Certification[]
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
+enum RemotePreference {
+  ONSITE_ONLY
+  HYBRID
+  REMOTE_ONLY
+  NO_PREFERENCE
+}
+
+enum ExperienceLevel {
+  STUDENT
+  ENTRY
+  JUNIOR
+  INTERMEDIATE
+  SENIOR
+  ANY
+}
+
+model Skill {
+  id       String @id @default(cuid())
+  name     String @unique
+  category String? // technical, software, soft, language
+
+  profileSkills ProfileSkill[]
+  jobSkills     JobSkill[]
+}
+
+model ProfileSkill {
+  id        String  @id @default(cuid())
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  skillId   String
+  skill     Skill   @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  level     Int?    @default(3) // 1-5
+  fromResume Boolean @default(false)
+
+  @@unique([profileId, skillId])
+}
+
+model Experience {
+  id          String    @id @default(cuid())
+  profileId   String
+  profile     Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  company     String
+  title       String
+  location    String?
+  startDate   DateTime?
+  endDate     DateTime?
+  isCurrent   Boolean   @default(false)
+  description String?   @db.Text
+  fromResume  Boolean   @default(false)
+  order       Int       @default(0)
+}
+
+model Education {
+  id           String    @id @default(cuid())
+  profileId    String
+  profile      Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  institution  String
+  degree       String?
+  fieldOfStudy String?
+  startDate    DateTime?
+  endDate      DateTime?
+  isCurrent    Boolean   @default(false)
+  fromResume   Boolean   @default(false)
+  order        Int       @default(0)
+}
+
+model ProfileLanguage {
+  id        String  @id @default(cuid())
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name      String
+  level     String? // A1..C2, "native", "fluent"...
+
+  @@unique([profileId, name])
+}
+
+model Certification {
+  id         String    @id @default(cuid())
+  profileId  String
+  profile    Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name       String
+  issuer     String?
+  issuedDate DateTime?
+  fromResume Boolean   @default(false)
+}
+
+// ---------------------------------------------------------------------------
+// Resumes (uploaded CV files + extraction results)
+// ---------------------------------------------------------------------------
+
+model Resume {
+  id       String @id @default(cuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  fileName    String
+  fileType    ResumeFileType
+  storageKey  String // path/key in the storage abstraction, never a public URL
+  sizeBytes   Int
+
+  rawText          String?  @db.Text
+  extraction       Json? // structured extraction result (skills, exp, edu, langs...)
+  extractionStatus ExtractionStatus @default(PENDING)
+  extractionError  String?
+
+  uploadedAt DateTime @default(now())
+}
+
+enum ResumeFileType {
+  PDF
+  DOCX
+  TXT
+}
+
+enum ExtractionStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
+// Jobs
+// ---------------------------------------------------------------------------
+
+model Company {
+  id          String @id @default(cuid())
+  name        String
+  normalizedName String @unique
+  website     String?
+  logoUrl     String?
+  sector      String?
+  description String? @db.Text
+
+  jobs Job[]
+}
+
+model JobSource {
+  id          String   @id @default(cuid())
+  key         String   @unique // e.g. "demo", "france_travail", "adzuna"
+  name        String
+  kind        JobSourceKind
+  baseUrl     String?
+  isActive    Boolean  @default(true)
+  lastSyncAt  DateTime?
+  lastSyncOk  Boolean?
+  config      Json? // non-secret adapter config; secrets stay in env vars
+
+  jobs Job[]
+}
+
+enum JobSourceKind {
+  DEMO
+  PUBLIC_API
+  RSS_FEED
+  PARTNER_FEED
+}
+
+model Job {
+  id          String   @id @default(cuid())
+
+  externalId  String   // id in the source system
+  sourceId    String
+  source      JobSource @relation(fields: [sourceId], references: [id])
+
+  title       String
+  companyId   String?
+  company     Company? @relation(fields: [companyId], references: [id])
+  companyNameRaw String // fallback / display if no Company row yet
+
+  description String   @db.Text
+  missions    String?  @db.Text
+
+  city        String?
+  postcode    String?
+  region      String?
+  country     String   @default("FR")
+  latitude    Float?
+  longitude   Float?
+
+  contractType    ContractType
+  experienceLevel ExperienceLevel @default(ANY)
+  requiredDegree  String?
+
+  salaryMin     Int?
+  salaryMax     Int?
+  salaryPeriod  SalaryPeriod?
+  salaryCurrency String @default("EUR")
+
+  hoursPerWeek    Int?
+  schedule        String? // free text e.g. "soirs et week-ends"
+  remoteType      RemotePreference @default(ONSITE_ONLY)
+
+  requiredSkills  String[] // denormalized text skills for quick lexical match
+  languages       String[]
+
+  url         String
+  contactEmail String?
+  contactPhone String?
+
+  publishedAt   DateTime
+  lastVerifiedAt DateTime @default(now())
+  expiresAt     DateTime?
+  isActive      Boolean  @default(true)
+
+  contentHash   String   // hash used for de-duplication / change detection
+  duplicateOfId String?
+  duplicateOf   Job?     @relation("Duplicates", fields: [duplicateOfId], references: [id])
+  duplicates    Job[]    @relation("Duplicates")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  skills        JobSkill[]
+  matches       Match[]
+  savedBy       SavedJob[]
+  applications  Application[]
+
+  @@unique([sourceId, externalId])
+  @@index([city])
+  @@index([contractType])
+  @@index([publishedAt])
+  @@index([contentHash])
+}
+
+enum ContractType {
+  CDI
+  CDD
+  STAGE
+  ALTERNANCE
+  INTERIM
+  MISSION
+  FREELANCE
+  SAISONNIER
+}
+
+enum SalaryPeriod {
+  HOUR
+  MONTH
+  YEAR
+}
+
+model JobSkill {
+  id      String @id @default(cuid())
+  jobId   String
+  job     Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  skillId String
+  skill   Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  required Boolean @default(true)
+
+  @@unique([jobId, skillId])
+}
+
+// ---------------------------------------------------------------------------
+// Matching
+// ---------------------------------------------------------------------------
+
+model Match {
+  id        String @id @default(cuid())
+  userId    String
+  jobId     String
+  job       Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  score       Float // 0-100
+  breakdown   Json  // per-dimension scores + explanation strings
+  computedAt  DateTime @default(now())
+
+  @@unique([userId, jobId])
+  @@index([userId, score])
+}
+
+// ---------------------------------------------------------------------------
+// Favorites / Applications / Alerts / Notifications
+// ---------------------------------------------------------------------------
+
+model SavedJob {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  note      String?  @db.Text
+  rank      Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, jobId])
+}
+
+model Application {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  status      ApplicationStatus @default(TO_REVIEW)
+  coverLetter String?  @db.Text
+  notes       String?  @db.Text
+  appliedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events ApplicationEvent[]
+
+  @@unique([userId, jobId])
+}
+
+enum ApplicationStatus {
+  TO_REVIEW
+  TO_PREPARE
+  SENT
+  INTERVIEW
+  REJECTED
+  ACCEPTED
+}
+
+model ApplicationEvent {
+  id            String   @id @default(cuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  status        ApplicationStatus
+  note          String?
+  createdAt     DateTime @default(now())
+}
+
+model Alert {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  query     Json // structured criteria (same shape as search filters)
+  minScore  Float @default(70)
+  isActive  Boolean @default(true)
+  lastCheckedAt DateTime?
+  createdAt DateTime @default(now())
+
+  notifications Notification[]
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alertId   String?
+  alert     Alert?   @relation(fields: [alertId], references: [id], onDelete: SetNull)
+
+  type      NotificationType
+  title     String
+  body      String
+  jobId     String?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+enum NotificationType {
+  NEW_MATCH
+  APPLICATION_UPDATE
+  SYSTEM
+}
