@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
     "dev:local": "next dev",
+    "postinstall": "prisma generate",
     "build": "next build",
     "start": "next start -H 0.0.0.0",
     "start:local": "next start",
