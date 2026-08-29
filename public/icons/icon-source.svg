@@ -1,0 +1,18 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3866e3"/>
+      <stop offset="1" stop-color="#122456"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- briefcase body -->
+  <rect x="128" y="216" width="256" height="176" rx="24" fill="#ffffff"/>
+  <!-- briefcase handle -->
+  <path d="M208 216v-24a48 48 0 0 1 48-48h0a48 48 0 0 1 48 48v24" stroke="#ffffff" stroke-width="20" fill="none" stroke-linecap="round"/>
+  <!-- center clasp -->
+  <rect x="236" y="264" width="40" height="28" rx="6" fill="#3866e3"/>
+  <!-- checkmark badge -->
+  <circle cx="372" cy="368" r="56" fill="#14b090" stroke="#122456" stroke-width="8"/>
+  <path d="M348 368l16 16 32-32" stroke="#ffffff" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

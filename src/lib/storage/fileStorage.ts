@@ -1,34 +1,42 @@
 import { randomUUID } from "crypto";
 import path from "path";
-import fs from "fs/promises";
+import type { StorageDriver } from "./types";
+import { localDriver } from "./localDriver";
 
 /**
  * Storage abstraction for uploaded files (CVs).
  *
- * Only a "local" driver is implemented (dev/demo default: files land under
- * ./storage/uploads, outside the web root, served only via an authenticated
- * API route — never a static/public path). Setting STORAGE_DRIVER=s3 and
- * filling the S3_* env vars is the intended production path; the interface
- * below is what an S3 implementation needs to satisfy so call sites never
- * change. We do not ship an S3 implementation because we have no bucket/
- * credentials to test against in this environment — wiring one in is a
- * contained, well-scoped follow-up (swap the two functions below for calls
- * to the AWS SDK v3 S3Client).
+ * Two drivers are wired up, selected by STORAGE_DRIVER:
+ *  - "local" (default): files under ./storage/uploads — simple for local
+ *    dev, but not persistent on serverless/ephemeral-filesystem hosts.
+ *  - "s3": any S3-compatible object store (AWS S3, Cloudflare R2, Backblaze
+ *    B2, MinIO...) — see s3Driver.ts. Recommended for real deployments.
+ *
+ * Every call site here (upload/read/delete routes) is driver-agnostic —
+ * switching STORAGE_DRIVER is the only change needed to move from local
+ * disk to object storage.
  */
 
 export interface StoredFile {
   key: string;
 }
 
-const UPLOAD_ROOT = path.join(process.cwd(), "storage", "uploads");
+let cachedDriver: StorageDriver | null = null;
 
-function assertLocalDriver() {
-  const driver = process.env.STORAGE_DRIVER || "local";
-  if (driver !== "local") {
-    throw new Error(
-      `STORAGE_DRIVER="${driver}" is not implemented yet. Only "local" is wired up in this build.`
-    );
+async function getDriver(): Promise<StorageDriver> {
+  if (cachedDriver) return cachedDriver;
+  const kind = process.env.STORAGE_DRIVER || "local";
+  if (kind === "local") {
+    cachedDriver = localDriver;
+  } else if (kind === "s3") {
+    // Dynamically imported so the AWS SDK is never pulled into a
+    // "local"-mode deployment's serverless bundle.
+    const { s3Driver } = await import("./s3Driver");
+    cachedDriver = s3Driver;
+  } else {
+    throw new Error(`STORAGE_DRIVER="${kind}" inconnu. Valeurs possibles : "local", "s3".`);
   }
+  return cachedDriver;
 }
 
 function safeKeyFor(userId: string, originalName: string) {
@@ -36,36 +44,46 @@ function safeKeyFor(userId: string, originalName: string) {
   return `${userId}/${randomUUID()}${ext}`;
 }
 
+const CONTENT_TYPES: Record<string, string> = {
+  ".pdf": "application/pdf",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".txt": "text/plain",
+};
+
 export async function saveUploadedFile(
   userId: string,
   originalName: string,
   buffer: Buffer
 ): Promise<StoredFile> {
-  assertLocalDriver();
   const key = safeKeyFor(userId, originalName);
-  const fullPath = path.join(UPLOAD_ROOT, key);
-  await fs.mkdir(path.dirname(fullPath), { recursive: true });
-  await fs.writeFile(fullPath, buffer);
+  const contentType = CONTENT_TYPES[path.extname(key).toLowerCase()];
+  const driver = await getDriver();
+  await driver.save(key, buffer, contentType);
   return { key };
 }
 
 export async function readStoredFile(key: string): Promise<Buffer> {
-  assertLocalDriver();
-  const fullPath = resolveSafePath(key);
-  return fs.readFile(fullPath);
+  const driver = await getDriver();
+  return driver.read(key);
 }
 
 export async function deleteStoredFile(key: string): Promise<void> {
-  assertLocalDriver();
-  const fullPath = resolveSafePath(key);
-  await fs.rm(fullPath, { force: true });
+  const driver = await getDriver();
+  await driver.delete(key);
 }
 
-/** Resolves a storage key to an absolute path, rejecting any path traversal. */
-function resolveSafePath(key: string): string {
-  const fullPath = path.normalize(path.join(UPLOAD_ROOT, key));
-  if (!fullPath.startsWith(UPLOAD_ROOT + path.sep)) {
-    throw new Error("Chemin de fichier invalide");
-  }
-  return fullPath;
+/**
+ * A time-limited direct-download URL, when the active driver supports it
+ * (S3 only — the local driver has no equivalent of a signed URL, since
+ * "direct from disk" already implies going through our own server).
+ * Returns null for drivers without this capability so callers can fall
+ * back to proxying the file through readStoredFile()/the file route.
+ */
+export async function getSignedDownloadUrl(
+  key: string,
+  expiresInSeconds = 300
+): Promise<string | null> {
+  const driver = await getDriver();
+  if (!driver.getSignedUrl) return null;
+  return driver.getSignedUrl(key, expiresInSeconds);
 }

@@ -61,6 +61,8 @@ export async function GET(req: Request) {
       publishedAt: job.publishedAt,
       lastVerifiedAt: job.lastVerifiedAt,
       requiredSkills: job.requiredSkills,
+      latitude: job.latitude,
+      longitude: job.longitude,
       distanceKm:
         profileInput?.latitude != null && profileInput?.longitude != null && job.latitude != null && job.longitude != null
           ? Math.round(haversineKm(profileInput.latitude, profileInput.longitude, job.latitude, job.longitude))

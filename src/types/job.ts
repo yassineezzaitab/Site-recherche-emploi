@@ -14,6 +14,8 @@ export interface JobListItem {
   publishedAt: string;
   lastVerifiedAt: string;
   requiredSkills: string[];
+  latitude: number | null;
+  longitude: number | null;
   distanceKm: number | null;
   commuteMinutes: number | null;
   match: { score: number; dimensions: DimensionScore[] } | null;

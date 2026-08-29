@@ -65,6 +65,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasCoordinates, setHasCoordinates] = useState(true);
 
   const loadProfile = useCallback(async () => {
     const res = await fetch("/api/profile");
@@ -82,6 +83,7 @@ export default function ProfilePage() {
         hasCar: p.hasCar, hasScooter: p.hasScooter, hasBike: p.hasBike, usesPublicTransit: p.usesPublicTransit,
         mobilityNotes: p.mobilityNotes ?? "", constraints: p.constraints ?? "",
       });
+      setHasCoordinates(!p.city || (p.latitude != null && p.longitude != null));
       setSkills(p.skills.map((s: { skill: { name: string } }) => ({ name: s.skill.name })));
       setExperiences(p.experiences);
       setEducations(p.educations);
@@ -198,6 +200,12 @@ export default function ProfilePage() {
           </Field>
           <Field label="Ville">
             <input className="input" value={profile.city} onChange={(e) => setProfile({ ...profile, city: e.target.value })} />
+            {!hasCoordinates && (
+              <p className="mt-1 text-xs text-warn-600">
+                Impossible de localiser cette ville pour l&apos;instant : le calcul de distance
+                sera approximatif. Vérifiez l&apos;orthographe ou réessayez après avoir enregistré.
+              </p>
+            )}
           </Field>
         </div>
         <Field label="Titre professionnel">

@@ -47,9 +47,9 @@ export default function ApplicationsPage() {
       <h1 className="font-display text-2xl font-bold text-ink-950">Mes candidatures</h1>
       {loading && <p className="mt-3 text-sm text-ink-400">Chargement...</p>}
 
-      <div className="mt-5 grid gap-4 overflow-x-auto pb-4 lg:grid-cols-6">
+      <div className="mt-5 grid grid-cols-1 gap-4 pb-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {STATUSES.map(({ key, label }) => (
-          <div key={key} className="min-w-[220px]">
+          <div key={key}>
             <h2 className="mb-2 text-sm font-semibold text-ink-700">
               {label} <span className="text-ink-400">({items.filter((i) => i.status === key).length})</span>
             </h2>

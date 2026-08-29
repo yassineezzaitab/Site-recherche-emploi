@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Search as SearchIcon, SlidersHorizontal, Sparkles } from "lucide-react";
+import { Search as SearchIcon, SlidersHorizontal, Sparkles, List, Map as MapIcon } from "lucide-react";
 import { JobCard } from "@/components/job/JobCard";
+import { JobsMap } from "@/components/search/JobsMap";
 import { CONTRACT_TYPES, REMOTE_PREFERENCES } from "@/lib/validation/profile";
 import { contractLabel, remoteLabel } from "@/lib/format";
 import type { JobListItem } from "@/types/job";
@@ -50,6 +51,19 @@ export default function SearchPage() {
   const [parsedQuery, setParsedQuery] = useState<ParsedQueryInfo | null>(null);
   const [hasProfile, setHasProfile] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<"list" | "map">("list");
+  const [origin, setOrigin] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.profile?.latitude != null && data.profile?.longitude != null) {
+          setOrigin({ latitude: data.profile.latitude, longitude: data.profile.longitude });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const runSearch = useCallback(async () => {
     setLoading(true);
@@ -177,18 +191,40 @@ export default function SearchPage() {
         </div>
       )}
 
-      <p className="text-sm text-ink-500">{loading ? "Recherche en cours..." : `${total} offre(s) trouvée(s)`}</p>
-
-      <div className="space-y-3">
-        {items.map((job) => (
-          <JobCard key={job.id} job={job} />
-        ))}
-        {!loading && items.length === 0 && (
-          <div className="card text-center text-sm text-ink-500">
-            Aucune offre ne correspond à ces critères pour le moment. Essayez d&apos;élargir votre recherche.
-          </div>
-        )}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-ink-500">{loading ? "Recherche en cours..." : `${total} offre(s) trouvée(s)`}</p>
+        <div className="flex overflow-hidden rounded-lg ring-1 ring-ink-200">
+          <button
+            onClick={() => setView("list")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm ${view === "list" ? "bg-brand-600 text-white" : "bg-white text-ink-600"}`}
+          >
+            <List size={14} /> Liste
+          </button>
+          <button
+            onClick={() => setView("map")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm ${view === "map" ? "bg-brand-600 text-white" : "bg-white text-ink-600"}`}
+          >
+            <MapIcon size={14} /> Carte
+          </button>
+        </div>
       </div>
+
+      {view === "list" ? (
+        <div className="space-y-3">
+          {items.map((job) => (
+            <JobCard key={job.id} job={job} />
+          ))}
+          {!loading && items.length === 0 && (
+            <div className="card text-center text-sm text-ink-500">
+              Aucune offre ne correspond à ces critères pour le moment. Essayez d&apos;élargir votre recherche.
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="h-[500px] sm:h-[600px]">
+          <JobsMap jobs={items} origin={origin} />
+        </div>
+      )}
     </div>
   );
 }

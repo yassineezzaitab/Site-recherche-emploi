@@ -474,3 +474,21 @@ enum NotificationType {
   APPLICATION_UPDATE
   SYSTEM
 }
+
+// ---------------------------------------------------------------------------
+// Geocoding cache
+// ---------------------------------------------------------------------------
+
+// Caches address -> coordinates lookups (see src/lib/geo/geocode.ts) so the
+// same city typed by many different users only ever hits the external
+// geocoding API once. Also lets us tell a "we tried and it genuinely
+// failed" miss apart from "we haven't looked this up yet" — useful for not
+// hammering the external API with the same bad query repeatedly.
+model GeocodeCache {
+  query      String   @id // normalized lookup string, e.g. "75011 paris"
+  found      Boolean
+  latitude   Float?
+  longitude  Float?
+  label      String?
+  lookedUpAt DateTime @default(now())
+}
