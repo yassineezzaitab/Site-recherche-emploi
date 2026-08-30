@@ -2,6 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { AstaMotif } from "@/components/ui/motifs";
+
+const CELEBRATION_STATUSES: Record<string, string> = {
+  INTERVIEW: "Un entretien décroché ! Zéro relation, zéro piston — juste le travail qui a payé.",
+  ACCEPTED: "Candidature acceptée. Ce qui compte, ce n'est pas le point de départ.",
+};
 
 interface ApplicationItem {
   id: string;
@@ -23,6 +30,7 @@ const STATUSES = [
 export default function ApplicationsPage() {
   const [items, setItems] = useState<ApplicationItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [celebration, setCelebration] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/applications")
@@ -35,6 +43,10 @@ export default function ApplicationsPage() {
 
   async function updateStatus(id: string, status: string) {
     setItems((items) => items.map((i) => (i.id === id ? { ...i, status } : i)));
+    if (CELEBRATION_STATUSES[status]) {
+      setCelebration(CELEBRATION_STATUSES[status]);
+      setTimeout(() => setCelebration(null), 5000);
+    }
     await fetch(`/api/applications/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -46,6 +58,11 @@ export default function ApplicationsPage() {
     <div className="pb-16">
       <h1 className="font-display text-2xl font-bold text-ink-950">Mes candidatures</h1>
       {loading && <p className="mt-3 text-sm text-ink-400">Chargement...</p>}
+      {celebration && (
+        <div className="motion-safe:animate-fade-in mt-3 rounded-lg bg-accent-100 px-3 py-2 text-sm text-accent-600">
+          {celebration}
+        </div>
+      )}
 
       <div className="mt-5 grid grid-cols-1 gap-4 pb-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {STATUSES.map(({ key, label }) => (
@@ -79,9 +96,11 @@ export default function ApplicationsPage() {
       </div>
 
       {!loading && items.length === 0 && (
-        <div className="card mt-4 text-sm text-ink-500">
-          Aucune candidature suivie pour le moment. Depuis la page d&apos;une offre, cliquez sur
-          « Suivre cette candidature » pour l&apos;ajouter ici.
+        <div className="mt-4">
+          <EmptyState
+            motif={<AstaMotif />}
+            message="Aucune candidature suivie pour le moment. Depuis la page d'une offre, cliquez sur « Suivre cette candidature » pour l'ajouter ici. Il ne faut pas grand-chose pour commencer — juste une première offre."
+          />
         </div>
       )}
     </div>

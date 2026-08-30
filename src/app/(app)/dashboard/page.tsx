@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Sparkles, Heart, ClipboardList, BellRing, ArrowRight, type LucideIcon } from "lucide-react";
 import { JobCard } from "@/components/job/JobCard";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { HigurashiMotif } from "@/components/ui/motifs";
 import type { JobListItem } from "@/types/job";
 
 interface DashboardData {
@@ -62,9 +64,10 @@ export default function DashboardPage() {
         <div className="space-y-3">
           {data.topMatches.map((job) => <JobCard key={job.id} job={job} />)}
           {data.topMatches.length === 0 && (
-            <div className="card text-sm text-ink-500">
-              Aucune correspondance pour le moment — complétez votre profil ou explorez la recherche.
-            </div>
+            <EmptyState
+              motif={<HigurashiMotif />}
+              message="Aucune correspondance pour le moment — complétez votre profil ou explorez la recherche. Les bonnes surprises se font parfois attendre jusqu'au crépuscule."
+            />
           )}
         </div>
       </div>

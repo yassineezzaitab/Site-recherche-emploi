@@ -75,8 +75,11 @@ export const remoteOkSource: JobSourceAdapter = {
       headers: { "User-Agent": "JobMatch/1.0 (+https://github.com)" },
     });
     if (!res.ok) {
-      console.error("[remoteOkSource] request failed", res.status);
-      return [];
+      // Throw rather than return [] so the ingest pipeline records this as
+      // a failed sync (JobSource.lastSyncOk = false) instead of silently
+      // looking like "0 jobs matched right now" — those are very different
+      // operational states and only one of them needs attention.
+      throw new Error(`request failed with status ${res.status}`);
     }
     const data = (await res.json()) as RemoteOkResult[];
     // The first array element is a legal/notice object, not a job — skip it.
