@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Search as SearchIcon, SlidersHorizontal, Sparkles, List, Map as MapIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Search as SearchIcon, SlidersHorizontal, Sparkles, List, Map as MapIcon, MapPin, Briefcase, GraduationCap } from "lucide-react";
 import { JobCard } from "@/components/job/JobCard";
 import { JobsMap } from "@/components/search/JobsMap";
 import { CONTRACT_TYPES, REMOTE_PREFERENCES } from "@/lib/validation/profile";
 import { contractLabel, remoteLabel } from "@/lib/format";
 import type { JobListItem } from "@/types/job";
+import type { Suggestion } from "@/lib/search/suggest";
 
 interface ParsedQueryInfo {
   matchedRules: string[];
@@ -17,6 +18,14 @@ interface ParsedQueryInfo {
   contractTypes: string[];
   experienceLevel: string | null;
   sectors: string[];
+}
+
+interface ProfileSummary {
+  city?: string | null;
+  experienceLevel?: string | null;
+  hoursPerWeekMin?: number | null;
+  hoursPerWeekMax?: number | null;
+  sectors?: string[];
 }
 
 const RULE_LABELS: Record<string, string> = {
@@ -37,6 +46,28 @@ const RULE_LABELS: Record<string, string> = {
   sectors: "secteur",
 };
 
+const GUIDED_EXAMPLES = [
+  "Job étudiant à Lyon",
+  "Alternance marketing",
+  "Temps partiel 15h",
+  "Sans expérience",
+  "Développeur junior télétravail",
+];
+
+function lastToken(text: string): string {
+  const parts = text.split(/\s+/);
+  return parts[parts.length - 1] ?? "";
+}
+
+function replaceLastToken(text: string, replacement: string): string {
+  const parts = text.split(/\s+/);
+  parts[parts.length - 1] = replacement;
+  return parts.join(" ") + " ";
+}
+
+const SUGGESTION_ICON = { city: MapPin, profession: Briefcase, formation: GraduationCap } as const;
+const SUGGESTION_LABEL = { city: "Ville", profession: "Métier", formation: "Formation" } as const;
+
 export default function SearchPage() {
   const [query, setQuery] = useState("");
   const [contractTypes, setContractTypes] = useState<string[]>([]);
@@ -53,6 +84,13 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"list" | "map">("list");
   const [origin, setOrigin] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [profile, setProfile] = useState<ProfileSummary | null>(null);
+
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const suggestAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     fetch("/api/profile")
@@ -61,14 +99,24 @@ export default function SearchPage() {
         if (data.profile?.latitude != null && data.profile?.longitude != null) {
           setOrigin({ latitude: data.profile.latitude, longitude: data.profile.longitude });
         }
+        if (data.profile) {
+          setProfile({
+            city: data.profile.city,
+            experienceLevel: data.profile.experienceLevel,
+            hoursPerWeekMin: data.profile.hoursPerWeekMin,
+            hoursPerWeekMax: data.profile.hoursPerWeekMax,
+            sectors: data.profile.sectors,
+          });
+        }
       })
       .catch(() => {});
   }, []);
 
-  const runSearch = useCallback(async () => {
+  const runSearch = useCallback(async (overrideQuery?: string) => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (query) params.set("q", query);
+    const q = overrideQuery ?? query;
+    if (q) params.set("q", q);
     if (contractTypes.length) params.set("contractTypes", contractTypes.join(","));
     if (remote.length) params.set("remote", remote.join(","));
     if (minSalary) params.set("minSalary", minSalary);
@@ -89,11 +137,83 @@ export default function SearchPage() {
     runSearch();
   }, [runSearch]);
 
+  // Debounced autocomplete on the last word being typed.
+  useEffect(() => {
+    const token = lastToken(query);
+    if (token.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      suggestAbortRef.current?.abort();
+      const controller = new AbortController();
+      suggestAbortRef.current = controller;
+      try {
+        const res = await fetch(`/api/search/suggest?q=${encodeURIComponent(token)}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const combined: Suggestion[] = [
+          ...(data.cities ?? []),
+          ...(data.professions ?? []),
+          ...(data.formations ?? []),
+        ];
+        setSuggestions(combined);
+        setShowSuggestions(combined.length > 0);
+        setActiveIndex(-1);
+      } catch {
+        // Aborted or network error — leave whatever suggestions were showing.
+      }
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [query]);
+
   function toggle(list: string[], setList: (v: string[]) => void, value: string) {
     setList(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
   }
 
+  function applySuggestion(s: Suggestion) {
+    const next = replaceLastToken(query, s.value);
+    setQuery(next);
+    setShowSuggestions(false);
+    setSuggestions([]);
+    inputRef.current?.focus();
+  }
+
+  function handleInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!showSuggestions || suggestions.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((i) => (i + 1) % suggestions.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => (i <= 0 ? suggestions.length - 1 : i - 1));
+    } else if (e.key === "Enter" && activeIndex >= 0) {
+      e.preventDefault();
+      applySuggestion(suggestions[activeIndex]);
+    } else if (e.key === "Escape") {
+      setShowSuggestions(false);
+    }
+  }
+
   const understoodRules = (parsedQuery?.matchedRules ?? []).map((r) => RULE_LABELS[r] ?? r);
+
+  const profileChips = useMemo(() => {
+    if (!profile) return [];
+    const chips: string[] = [];
+    if (profile.experienceLevel === "STUDENT" && profile.hoursPerWeekMax) {
+      chips.push(`Missions compatibles avec ${profile.hoursPerWeekMax}h/semaine`);
+    }
+    if (profile.city) {
+      chips.push(`Offres à ${profile.city}`);
+    }
+    if (profile.sectors?.[0]) {
+      chips.push(`${profile.sectors[0]} à temps partiel`);
+    }
+    return chips.slice(0, 3);
+  }, [profile]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-5 pb-16">
@@ -114,6 +234,7 @@ export default function SearchPage() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          setShowSuggestions(false);
           runSearch();
         }}
         className="card flex flex-col gap-3 sm:flex-row sm:items-center"
@@ -121,17 +242,87 @@ export default function SearchPage() {
         <div className="relative flex-1">
           <SearchIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
           <input
+            ref={inputRef}
             className="input pl-9"
             placeholder="Ex : job étudiant, 15h/semaine, le soir, à moins de 20 minutes"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleInputKeyDown}
+            onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+            autoComplete="off"
+            role="combobox"
+            aria-expanded={showSuggestions}
+            aria-controls="search-suggestions-list"
+            aria-autocomplete="list"
           />
+          {showSuggestions && (
+            <ul
+              id="search-suggestions-list"
+              role="listbox"
+              className="absolute left-0 right-0 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-lg border border-ink-200 bg-white shadow-lg"
+            >
+              {suggestions.map((s, i) => {
+                const Icon = SUGGESTION_ICON[s.type];
+                return (
+                  <li key={`${s.type}-${s.label}-${i}`}>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => applySuggestion(s)}
+                      className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm ${
+                        i === activeIndex ? "bg-brand-50" : "hover:bg-ink-50"
+                      }`}
+                    >
+                      <Icon size={15} className="shrink-0 text-ink-400" />
+                      <span className="flex-1 truncate text-ink-800">{s.label}</span>
+                      <span className="shrink-0 text-xs text-ink-400">
+                        {s.meta ?? SUGGESTION_LABEL[s.type]}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
         <button type="submit" className="btn-primary">Rechercher</button>
         <button type="button" onClick={() => setShowFilters(!showFilters)} className="btn-secondary">
           <SlidersHorizontal size={16} /> Filtres
         </button>
       </form>
+
+      {(GUIDED_EXAMPLES.length > 0 || profileChips.length > 0) && !query && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-ink-500">Que recherchez-vous ?</span>
+          {profileChips.map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              onClick={() => {
+                setQuery(chip);
+                runSearch(chip);
+              }}
+              className="badge border border-brand-300 bg-brand-50 text-brand-700"
+            >
+              {chip}
+            </button>
+          ))}
+          {GUIDED_EXAMPLES.map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              onClick={() => {
+                setQuery(chip);
+                runSearch(chip);
+              }}
+              className="badge border border-ink-200 bg-white text-ink-600"
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+      )}
 
       {understoodRules.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg bg-accent-100 px-4 py-2.5 text-sm text-accent-600">

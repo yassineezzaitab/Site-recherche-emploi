@@ -21,7 +21,7 @@ export function handleApiError(err: unknown) {
     return jsonError(err.message, 404);
   }
   console.error(err);
-  return jsonError("Une erreur interne est survenue", 500);
+  return jsonError("Un problème est survenu. Réessayez dans quelques instants.", 500);
 }
 
 export class ForbiddenError extends Error {}
