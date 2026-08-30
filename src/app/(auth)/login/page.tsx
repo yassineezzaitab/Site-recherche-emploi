@@ -13,13 +13,22 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setLoading(true);
+    // Read the submitted values straight from the form rather than trusting
+    // React state alone: on some mobile browsers, autofill/password-manager
+    // fill sets the input's DOM value without firing a React onChange, so
+    // state can stay empty even though the field visually shows the filled
+    // value — submitting state in that case would silently send blank
+    // credentials.
+    const formData = new FormData(e.currentTarget);
+    const submittedEmail = String(formData.get("email") || email);
+    const submittedPassword = String(formData.get("password") || password);
     const res = await signIn("credentials", {
-      email,
-      password,
+      email: submittedEmail,
+      password: submittedPassword,
       redirect: false,
     });
     setLoading(false);
@@ -48,6 +57,7 @@ function LoginForm() {
           <label className="label" htmlFor="email">Email</label>
           <input
             id="email"
+            name="email"
             type="email"
             required
             className="input"
@@ -60,6 +70,7 @@ function LoginForm() {
           <label className="label" htmlFor="password">Mot de passe</label>
           <PasswordInput
             id="password"
+            name="password"
             required
             className="input"
             value={password}

@@ -65,8 +65,24 @@ function replaceLastToken(text: string, replacement: string): string {
   return parts.join(" ") + " ";
 }
 
-const SUGGESTION_ICON = { city: MapPin, profession: Briefcase, formation: GraduationCap } as const;
-const SUGGESTION_LABEL = { city: "Ville", profession: "Métier", formation: "Formation" } as const;
+// The search page's own suggest call only ever returns city/profession/
+// formation (see /api/search/suggest), but Suggestion["type"] is a shared
+// union with the profile page's skill/sector suggestions — cover every
+// member here too so this stays a valid, exhaustive lookup.
+const SUGGESTION_ICON: Record<Suggestion["type"], typeof MapPin> = {
+  city: MapPin,
+  profession: Briefcase,
+  formation: GraduationCap,
+  skill: Briefcase,
+  sector: Briefcase,
+};
+const SUGGESTION_LABEL: Record<Suggestion["type"], string> = {
+  city: "Ville",
+  profession: "Métier",
+  formation: "Formation",
+  skill: "Compétence",
+  sector: "Secteur",
+};
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
@@ -112,10 +128,21 @@ export default function SearchPage() {
       .catch(() => {});
   }, []);
 
+  // Debounce the free-text query before it drives a search: without this,
+  // every keystroke fired its own /api/jobs request (typing "développeur"
+  // meant 11 requests in a row). Filter toggles (contract type, remote,
+  // sort...) are discrete clicks, not keystrokes, so they still search
+  // immediately — only `query` goes through the debounce.
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedQuery(query), 350);
+    return () => clearTimeout(handle);
+  }, [query]);
+
   const runSearch = useCallback(async (overrideQuery?: string) => {
     setLoading(true);
     const params = new URLSearchParams();
-    const q = overrideQuery ?? query;
+    const q = overrideQuery ?? debouncedQuery;
     if (q) params.set("q", q);
     if (contractTypes.length) params.set("contractTypes", contractTypes.join(","));
     if (remote.length) params.set("remote", remote.join(","));
@@ -131,7 +158,7 @@ export default function SearchPage() {
     setParsedQuery(data.parsedQuery);
     setHasProfile(data.hasProfile);
     setLoading(false);
-  }, [query, contractTypes, remote, minSalary, maxDistanceKm, sort]);
+  }, [debouncedQuery, contractTypes, remote, minSalary, maxDistanceKm, sort]);
 
   useEffect(() => {
     runSearch();
@@ -235,7 +262,10 @@ export default function SearchPage() {
         onSubmit={(e) => {
           e.preventDefault();
           setShowSuggestions(false);
-          runSearch();
+          // Pass the live query explicitly: debouncedQuery can lag up to
+          // 350ms behind what's on screen, and a manual submit should
+          // never wait on that.
+          runSearch(query);
         }}
         className="card flex flex-col gap-3 sm:flex-row sm:items-center"
       >

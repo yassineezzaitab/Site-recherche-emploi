@@ -15,7 +15,7 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
 
@@ -24,11 +24,18 @@ export default function SignupPage() {
       return;
     }
 
+    // Read from the form, not just React state: autofill on some mobile
+    // browsers can set the DOM value without firing onChange, leaving
+    // state stale (see login/page.tsx for the same fix).
+    const formData = new FormData(e.currentTarget);
+    const submittedEmail = String(formData.get("email") || email);
+    const submittedPassword = String(formData.get("password") || password);
+
     setLoading(true);
     const res = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, consent, marketingOptIn }),
+      body: JSON.stringify({ email: submittedEmail, password: submittedPassword, consent, marketingOptIn }),
     });
     const data = await res.json();
 
@@ -38,7 +45,11 @@ export default function SignupPage() {
       return;
     }
 
-    const signInRes = await signIn("credentials", { email, password, redirect: false });
+    const signInRes = await signIn("credentials", {
+      email: submittedEmail,
+      password: submittedPassword,
+      redirect: false,
+    });
     setLoading(false);
     if (signInRes?.error) {
       router.push("/login");
@@ -66,6 +77,7 @@ export default function SignupPage() {
             <label className="label" htmlFor="email">Email</label>
             <input
               id="email"
+              name="email"
               type="email"
               required
               className="input"
@@ -78,6 +90,7 @@ export default function SignupPage() {
             <label className="label" htmlFor="password">Mot de passe</label>
             <PasswordInput
               id="password"
+              name="password"
               required
               minLength={10}
               className="input"

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { suggestProfessions, suggestFormations } from "@/lib/search/suggest";
+import { suggestProfessions, suggestFormations, suggestSkills, suggestSectors } from "@/lib/search/suggest";
 
 describe("suggestProfessions", () => {
   it('suggests cashier/reception roles for "HO"', () => {
@@ -38,6 +38,34 @@ describe("suggestProfessions", () => {
 
   it("returns nothing for a query shorter than 2 characters", () => {
     expect(suggestProfessions("h")).toEqual([]);
+  });
+
+  it('suggests sales roles for "vendeur" (profile "métiers recherchés" field)', () => {
+    const labels = suggestProfessions("vendeur").map((s) => s.label);
+    expect(labels.some((l) => /vendeur/i.test(l))).toBe(true);
+  });
+});
+
+describe("suggestSkills", () => {
+  it("reuses the CV-parsing skills dictionary and matches by prefix", () => {
+    const labels = suggestSkills("exc").map((s) => s.label);
+    expect(labels).toContain("Excel");
+  });
+
+  it("does not fabricate a skill absent from the dictionary", () => {
+    expect(suggestSkills("zzznotaskill")).toEqual([]);
+  });
+});
+
+describe("suggestSectors", () => {
+  it("suggests a sector derived from the profession dictionary's categories", () => {
+    const labels = suggestSectors("comm").map((s) => s.label);
+    expect(labels).toContain("Commerce");
+  });
+
+  it("never returns duplicate sector labels", () => {
+    const labels = suggestSectors("a").map((s) => s.label);
+    expect(new Set(labels).size).toBe(labels.length);
   });
 });
 

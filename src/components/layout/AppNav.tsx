@@ -34,11 +34,20 @@ export function AppNav() {
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    fetch("/api/notifications")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => data && setUnreadCount(data.unreadCount))
-      .catch(() => {});
-  }, [pathname]);
+    function refreshUnreadCount() {
+      fetch("/api/notifications")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => data && setUnreadCount(data.unreadCount))
+        .catch(() => {});
+    }
+    // Fetch on mount and when the tab regains focus — not on every
+    // in-app navigation (nothing in the UI currently marks notifications
+    // read, so re-fetching per route change was a pure wasted request on
+    // every single page change).
+    refreshUnreadCount();
+    window.addEventListener("focus", refreshUnreadCount);
+    return () => window.removeEventListener("focus", refreshUnreadCount);
+  }, []);
 
   return (
     <>
