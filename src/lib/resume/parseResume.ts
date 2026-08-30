@@ -49,6 +49,11 @@ export interface ExtractedCertification {
   issuer: string | null;
 }
 
+export interface ExtractedLink {
+  label: string; // "LinkedIn" | "GitHub" | "Portfolio" | the raw domain otherwise
+  url: string;
+}
+
 export interface ResumeExtraction {
   fullName: string | null;
   email: string | null;
@@ -59,20 +64,40 @@ export interface ResumeExtraction {
   educations: ExtractedEducation[];
   languages: ExtractedLanguage[];
   certifications: ExtractedCertification[];
+  interests: string[];
+  links: ExtractedLink[];
   suggestedTitles: string[];
   warnings: string[];
 }
 
 const SECTION_HEADERS: Record<string, RegExp> = {
   experience:
-    /^(exp[eé]riences?( professionnelles?)?|parcours professionnel|emplois?)\s*:?\s*$/i,
+    /^(exp[eé]riences?( professionnelles?)?|parcours professionnel|emplois?|stages?)\s*(et stages?)?\s*:?\s*$/i,
   education:
-    /^(formations?|[eé]ducation|dipl[oô]mes?|parcours scolaire|parcours acad[eé]mique)\s*:?\s*$/i,
-  skills: /^(comp[eé]tences?( techniques?)?|savoir[- ]faire)\s*:?\s*$/i,
+    /^(formations?( acad[eé]miques?| scolaires?)?|[eé]ducation|dipl[oô]mes?|parcours scolaire|parcours acad[eé]mique|cursus( scolaire)?|scolarit[eé])\s*:?\s*$/i,
+  skills:
+    /^(comp[eé]tences?( techniques?| et outils)?|savoir[- ]faire|outils( et technologies)?|technologies)\s*:?\s*$/i,
   languages: /^(langues?)\s*:?\s*$/i,
   certifications: /^(certifications?|certificats?)\s*:?\s*$/i,
   summary: /^(profil|[aà] propos|r[eé]sum[eé]|objectif)\s*:?\s*$/i,
+  interests:
+    /^(centres?\s*d['’]int[eé]r[eê]ts?|loisirs?|passions?|activit[eé]s? extra[- ]scolaires?)\s*:?\s*$/i,
 };
+
+// Modern CV templates commonly prefix section titles with an icon/emoji or
+// a bullet ("🎓 Formation", "• Compétences") — stripped before matching so
+// those headers aren't missed and their content silently dumped into
+// whatever section came before (the main cause of "a formation ends up
+// under Compétences": the section boundary itself was never detected).
+function stripLeadingDecoration(line: string): string {
+  return line.replace(/^[^\p{L}0-9]+/u, "").trim();
+}
+
+// A true section header is short — a full sentence that happens to start
+// with a keyword (e.g. "Formation continue chez..." as prose) must never
+// be swallowed as a header, since matched header lines are dropped rather
+// than kept as content.
+const MAX_HEADER_LENGTH = 45;
 
 const MONTHS: Record<string, number> = {
   janvier: 1, jan: 1, février: 2, fevrier: 2, fev: 2, mars: 3,
@@ -121,12 +146,15 @@ function splitIntoSections(text: string): Map<string, string[]> {
       continue;
     }
     let matched = false;
-    for (const [key, re] of Object.entries(SECTION_HEADERS)) {
-      if (re.test(line)) {
-        current = key;
-        if (!sections.has(current)) sections.set(current, []);
-        matched = true;
-        break;
+    if (line.length <= MAX_HEADER_LENGTH) {
+      const candidate = stripLeadingDecoration(line);
+      for (const [key, re] of Object.entries(SECTION_HEADERS)) {
+        if (re.test(candidate)) {
+          current = key;
+          if (!sections.has(current)) sections.set(current, []);
+          matched = true;
+          break;
+        }
       }
     }
     if (!matched) {
@@ -291,7 +319,7 @@ function extractEducations(sectionText: string): ExtractedEducation[] {
   if (!sectionText) return [];
   const blocks = splitIntoEntryBlocks(sectionText);
   const degreeKeywords =
-    /(bac(?:\s*\+\s*\d)?|bts|dut|licence|master|ing[eé]nieur|mba|doctorat|cap|bep|deug|classe pr[eé]paratoire)/i;
+    /(bac(?:\s*\+\s*\d)?|bts|but|dut|bt\b|licence|master|ing[eé]nieur|mba|doctorat|cap|bep|deug|classe pr[eé]paratoire|brevet)/i;
 
   return blocks.map((block) => {
     const lines = block.split("\n").filter(Boolean);
@@ -370,6 +398,50 @@ function splitIntoEntryBlocks(sectionText: string): string[] {
   return blocks.filter((b) => b.trim().length > 0);
 }
 
+function extractInterests(sectionText: string): string[] {
+  if (!sectionText.trim()) return [];
+  // Interests are usually a comma/bullet-separated list rather than one
+  // per line, so split on common separators, not just newlines.
+  const items = sectionText
+    .split(/[\n,;•·]/)
+    .map((s) => s.trim().replace(/^[-–—*]\s*/, ""))
+    .filter((s) => s.length > 1 && s.length < 60);
+  return Array.from(new Set(items));
+}
+
+const LINK_PATTERNS: { label: string; re: RegExp }[] = [
+  { label: "LinkedIn", re: /https?:\/\/(www\.)?linkedin\.com\/[^\s,;)]+/i },
+  { label: "GitHub", re: /https?:\/\/(www\.)?github\.com\/[^\s,;)]+/i },
+  { label: "Portfolio", re: /https?:\/\/[^\s,;)]*portfolio[^\s,;)]*/i },
+];
+
+function extractLinks(fullText: string): ExtractedLink[] {
+  const found: ExtractedLink[] = [];
+  const seen = new Set<string>();
+  for (const { label, re } of LINK_PATTERNS) {
+    const match = fullText.match(re);
+    if (match && !seen.has(match[0])) {
+      seen.add(match[0]);
+      found.push({ label, url: match[0].replace(/[.,]+$/, "") });
+    }
+  }
+  return found;
+}
+
+/** Drops entries that are exact duplicates once whitespace/case is normalized. */
+function dedupeBy<T>(items: T[], keyOf: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const item of items) {
+    const key = keyOf(item).toLowerCase().replace(/\s+/g, " ").trim();
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      result.push(item);
+    }
+  }
+  return result;
+}
+
 function suggestTitles(experiences: ExtractedExperience[]): string[] {
   const titles = experiences.map((e) => e.title).filter(Boolean);
   return Array.from(new Set(titles)).slice(0, 5);
@@ -388,10 +460,18 @@ export function parseResume(rawText: string): ResumeExtraction {
   const city = extractCity(rawText);
 
   const skills = extractSkills(rawText);
-  const experiences = extractExperiences((sections.get("experience") ?? []).join("\n"));
-  const educations = extractEducations((sections.get("education") ?? []).join("\n"));
+  const experiences = dedupeBy(
+    extractExperiences((sections.get("experience") ?? []).join("\n")),
+    (e) => `${e.title}@${e.company}`
+  );
+  const educations = dedupeBy(
+    extractEducations((sections.get("education") ?? []).join("\n")),
+    (e) => `${e.degree ?? ""}@${e.institution}`
+  );
   const languages = extractLanguages((sections.get("languages") ?? []).join("\n"), rawText);
   const certifications = extractCertifications((sections.get("certifications") ?? []).join("\n"));
+  const interests = extractInterests((sections.get("interests") ?? []).join("\n"));
+  const links = extractLinks(rawText);
 
   if (experiences.length === 0) {
     warnings.push("Aucune expérience professionnelle détectée automatiquement — vous pouvez les ajouter manuellement.");
@@ -413,6 +493,8 @@ export function parseResume(rawText: string): ResumeExtraction {
     educations,
     languages,
     certifications,
+    interests,
+    links,
     suggestedTitles: suggestTitles(experiences),
     warnings,
   };

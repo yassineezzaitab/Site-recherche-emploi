@@ -226,6 +226,40 @@ export function ExtractionReview({
         </div>
       </section>
 
+      {extraction.interests.length > 0 && (
+        <section className="mt-5">
+          <h3 className="text-sm font-semibold text-ink-800">
+            Centres d&apos;intérêt ({extraction.interests.length})
+          </h3>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {extraction.interests.map((interest) => (
+              <span key={interest} className="badge bg-ink-100 text-ink-700">
+                {interest}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {extraction.links.length > 0 && (
+        <section className="mt-5">
+          <h3 className="text-sm font-semibold text-ink-800">Liens ({extraction.links.length})</h3>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {extraction.links.map((link) => (
+              <a
+                key={link.url}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="badge bg-brand-50 text-brand-700 hover:underline"
+              >
+                {link.label}
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="mt-5">
         <h3 className="text-sm font-semibold text-ink-800">
           Certifications ({certifications.length})
