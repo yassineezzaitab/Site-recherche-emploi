@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Trash2, Plus, BellRing } from "lucide-react";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { HigurashiMotif } from "@/components/ui/motifs";
 
 interface AlertItem {
   id: string;
@@ -109,7 +111,10 @@ export default function AlertsPage() {
             </div>
           ))}
           {alerts.length === 0 && (
-            <div className="card text-sm text-ink-500">Aucune alerte pour le moment.</div>
+            <EmptyState
+              motif={<HigurashiMotif />}
+              message="Aucune alerte pour le moment. Créez une alerte pour être averti dès qu'une offre correspond — même dans le calme, ça vaut le coup de rester à l'écoute."
+            />
           )}
         </div>
       )}

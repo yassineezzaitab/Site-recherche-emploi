@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { UploadCloud, Loader2, CheckCircle2, AlertTriangle, FileText } from "lucide-react";
 import type { ResumeExtraction } from "@/lib/resume/parseResume";
+import { AstaMotif } from "@/components/ui/motifs";
 
 const MAX_SIZE_BYTES = 8 * 1024 * 1024;
 const ACCEPTED_EXTENSIONS = [".pdf", ".docx", ".txt"];
@@ -14,6 +15,7 @@ const ACCEPTED_EXTENSIONS = [".pdf", ".docx", ".txt"];
 const ANALYZING_MESSAGES = [
   "On rassemble les indices, comme dans une bonne enquête d'été.",
   "Chaque compétence compte, un pas de plus vers l'objectif.",
+  "Pas besoin d'être le plus fort au départ — juste de ne rien lâcher.",
   "La patience d'aujourd'hui prépare la force de demain.",
   "Presque terminé…",
 ];
@@ -125,7 +127,10 @@ export function CvUpload({ onExtracted }: { onExtracted: (extraction: ResumeExtr
           </>
         ) : status === "done" ? (
           <>
-            <CheckCircle2 className="text-accent-500" size={28} />
+            <div className="relative">
+              <CheckCircle2 className="text-accent-500" size={28} />
+              <AstaMotif size={16} className="absolute -right-2 -top-2 motion-safe:animate-fade-in" />
+            </div>
             <p className="text-sm font-medium text-ink-700">{selectedFile?.name} analysé avec succès.</p>
             <p className="text-xs text-brand-600">Touchez pour importer un autre fichier</p>
           </>

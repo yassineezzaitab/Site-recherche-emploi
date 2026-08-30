@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Sparkles, FileText, Target, Bell, ShieldCheck } from "lucide-react";
 import { PublicHeader } from "@/components/layout/PublicHeader";
-import { Footer } from "@/components/layout/Footer";
 
 const FEATURES = [
   {
@@ -76,7 +75,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <Footer />
     </div>
   );
 }

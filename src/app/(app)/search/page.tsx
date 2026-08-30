@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search as SearchIcon, SlidersHorizontal, Sparkles, List, Map as MapIcon, MapPin, Briefcase, GraduationCap } from "lucide-react";
 import { JobCard } from "@/components/job/JobCard";
 import { JobsMap } from "@/components/search/JobsMap";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ObitoMotif } from "@/components/ui/motifs";
 import { CONTRACT_TYPES, REMOTE_PREFERENCES } from "@/lib/validation/profile";
 import { contractLabel, remoteLabel } from "@/lib/format";
 import type { JobListItem } from "@/types/job";
@@ -436,9 +438,10 @@ export default function SearchPage() {
             <JobCard key={job.id} job={job} />
           ))}
           {!loading && items.length === 0 && (
-            <div className="card text-center text-sm text-ink-500">
-              Aucune offre ne correspond à ces critères pour le moment. Essayez d&apos;élargir votre recherche.
-            </div>
+            <EmptyState
+              motif={<ObitoMotif />}
+              message="Aucune offre ne correspond à ces critères pour le moment. Essayez d'élargir votre recherche."
+            />
           )}
         </div>
       ) : (

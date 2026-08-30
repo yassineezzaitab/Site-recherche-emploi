@@ -10,6 +10,7 @@ import {
 import { PublicHeader } from "@/components/layout/PublicHeader";
 import { MatchScoreRing } from "@/components/ui/MatchScore";
 import { DemoBadge } from "@/components/ui/DemoBadge";
+import { AstaMotif } from "@/components/ui/motifs";
 import { contractLabel, experienceLabel, remoteLabel, formatSalary, formatFreshness, formatDate } from "@/lib/format";
 import type { MatchResult } from "@/types/job";
 
@@ -104,7 +105,17 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
       <PublicHeader />
       <div className="mx-auto max-w-4xl px-6 py-8">
         <div className="card flex flex-col gap-4 sm:flex-row sm:items-start">
-          {match && <MatchScoreRing score={match.score} size={72} />}
+          {match && (
+            <div className="relative shrink-0">
+              <MatchScoreRing score={match.score} size={72} />
+              {match.score >= 90 && (
+                <AstaMotif
+                  size={22}
+                  className="absolute -right-1 -top-1 motion-safe:animate-fade-in"
+                />
+              )}
+            </div>
+          )}
           <div className="flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="font-display text-2xl font-bold text-ink-950">{job.title}</h1>

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Trash2 } from "lucide-react";
 import { contractLabel, formatSalary } from "@/lib/format";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ObitoMotif } from "@/components/ui/motifs";
 
 interface SavedJobItem {
   id: string;
@@ -48,9 +50,10 @@ export default function FavoritesPage() {
       <h1 className="font-display text-2xl font-bold text-ink-950">Mes favoris</h1>
       {loading && <p className="text-sm text-ink-400">Chargement...</p>}
       {!loading && items.length === 0 && (
-        <div className="card text-sm text-ink-500">
-          Aucune offre enregistrée. Ajoutez des offres à vos favoris depuis leur page de détail.
-        </div>
+        <EmptyState
+          motif={<ObitoMotif />}
+          message="Aucune offre enregistrée. Ajoutez des offres à vos favoris depuis leur page de détail — ce qu'on choisit de garder en dit souvent long sur ce qu'on veut protéger."
+        />
       )}
       <div className="space-y-3">
         {items.map((item) => (
