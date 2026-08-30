@@ -51,7 +51,7 @@ export const SKILLS: SkillDefinition[] = [
   { canonical: "Maintenance", category: "technical", aliases: ["maintenance industrielle", "maintenance électronique", "maintenance"] },
   { canonical: "Électrotechnique", category: "technical", aliases: ["électrotechnique", "electrotechnique"] },
   { canonical: "Automatisme", category: "technical", aliases: ["automatisme", "automate programmable"] },
-  { canonical: "Programmation", category: "technical", aliases: ["programmation informatique", "programmation embarquée"] },
+  { canonical: "Programmation", category: "technical", aliases: ["programmation informatique", "programmation embarquée", "programmation"] },
   { canonical: "Soudure", category: "technical", aliases: ["soudure", "brasage"] },
   { canonical: "Comptabilité", category: "technical", aliases: ["comptabilité", "comptable"] },
   { canonical: "Gestion de projet", category: "technical", aliases: ["gestion de projet", "chef de projet", "project management"] },
