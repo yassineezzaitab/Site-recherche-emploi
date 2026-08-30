@@ -15,6 +15,21 @@ import {
  * silently as fact.
  */
 
+/**
+ * JavaScript's \b only treats [A-Za-z0-9_] as "word" characters — it does
+ * NOT recognize accented Unicode letters (é, à, ï...). That means
+ * /\bbut\b/i "matches a boundary" right in the middle of "débutant" (dé|but|ant):
+ * é isn't a word character to \b, so it looks like "but" starts a fresh
+ * word. On French CV text this is a real, silent source of false-positive
+ * keyword matches (a degree keyword firing on "débutant", a skill alias
+ * firing inside an unrelated accented word). \p{L}/\p{N} with the /u flag
+ * fixes this by treating every Unicode letter/digit as a word character.
+ */
+function wordBoundaryRegex(alternatives: string[], flags = "i"): RegExp {
+  const body = alternatives.map((alt) => `(?<![\\p{L}\\p{N}])(?:${alt})(?![\\p{L}\\p{N}])`).join("|");
+  return new RegExp(body, flags.includes("u") ? flags : `${flags}u`);
+}
+
 export interface ExtractedSkill {
   name: string;
   category: string;
@@ -82,6 +97,10 @@ const SECTION_HEADERS: Record<string, RegExp> = {
   summary: /^(profil|[aà] propos|r[eé]sum[eé]|objectif)\s*:?\s*$/i,
   interests:
     /^(centres?\s*d['’]int[eé]r[eê]ts?|loisirs?|passions?|activit[eé]s? extra[- ]scolaires?)\s*:?\s*$/i,
+  // Recognized and routed to its own (unprocessed) bucket specifically so
+  // its content — day names, times, "vacances scolaires" — never gets
+  // silently absorbed into whichever real section preceded it.
+  ignored: /^(disponibilit[eé]s?|contact|coordonn[eé]es?)\s*:?\s*$/i,
 };
 
 // Modern CV templates commonly prefix section titles with an icon/emoji or
@@ -170,19 +189,64 @@ function extractContact(text: string) {
     /(?:\+33|0)\s?[1-9](?:[\s.-]?\d{2}){4}/
   );
 
-  // Heuristic: the candidate's name is usually the first non-empty line
-  // that isn't the email/phone and doesn't look like a section header or a
-  // sentence (no more than 4 words, starts with a capital letter).
-  const firstLines = text.split("\n").slice(0, 8);
-  let fullName: string | null = null;
-  for (const raw of firstLines) {
-    const line = raw.trim();
-    if (!line) continue;
-    if (line.includes("@") || /\d{2,}/.test(line)) continue;
+  // Heuristic: the candidate's name is a short (1-4 word), capitalized
+  // line that isn't a section header/headline and doesn't contain digits.
+  // Common CV headlines ("Job étudiant", "À la recherche d'une
+  // alternance"...) would otherwise pass the same shape test, so they're
+  // explicitly excluded.
+  const HEADLINE_WORDS = /\b(job|[ée]tudiant|recherche|profil|objectif|candidat|alternance|stage|cv)\b/i;
+
+  // Column-reconstructed text can glue two unrelated same-row items
+  // together with no space between them ("Yassine Ez-zaïtabCOMPETENCES" —
+  // the name and the next column's section header, both on the same
+  // visual row of the original PDF). A real name is Title Case, never
+  // ALL CAPS, so a trailing all-caps run of 4+ letters glued onto an
+  // otherwise Title Case line is reliably the next thing, not part of it.
+  function stripGluedUppercaseSuffix(line: string): string {
+    return line.replace(/\p{Lu}{4,}$/u, "").trim();
+  }
+
+  function looksLikeName(rawLine: string): string | null {
+    const line = stripGluedUppercaseSuffix(rawLine);
+    if (!line || line.includes("@") || /\d/.test(line)) return null;
     const words = line.split(/\s+/);
-    if (words.length >= 1 && words.length <= 4 && /^[A-ZÀ-Ý]/.test(line)) {
-      fullName = line;
-      break;
+    if (words.length < 1 || words.length > 4) return null;
+    if (!/^[A-ZÀ-Ý]/.test(line)) return null;
+    if (HEADLINE_WORDS.test(line)) return null;
+    return line;
+  }
+
+  const allLines = text.split("\n").map((l) => l.trim());
+  let fullName: string | null = null;
+
+  // Prefer a name found near the phone/email — virtually every CV layout
+  // groups contact details together, which is a much stronger signal than
+  // "somewhere in the first few lines" once a layout isn't simple top-to-
+  // bottom (a multi-column CV can easily put a headline, not the name,
+  // first in extracted-text order).
+  const anchorMatch = phoneMatch ?? emailMatch;
+  if (anchorMatch) {
+    const anchorLine = allLines.findIndex((l) => l.includes(anchorMatch[0]));
+    if (anchorLine !== -1) {
+      const windowStart = Math.max(0, anchorLine - 4);
+      const windowEnd = Math.min(allLines.length, anchorLine + 4);
+      for (let i = windowStart; i < windowEnd; i++) {
+        const candidate = looksLikeName(allLines[i]);
+        if (candidate) {
+          fullName = candidate;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!fullName) {
+    for (const line of allLines.slice(0, 8)) {
+      const candidate = looksLikeName(line);
+      if (candidate) {
+        fullName = candidate;
+        break;
+      }
     }
   }
 
@@ -208,7 +272,7 @@ function extractSkills(fullText: string): ExtractedSkill[] {
 
   for (const def of SKILLS) {
     for (const alias of def.aliases) {
-      const re = new RegExp(`(?<![\\w])${alias}(?![\\w])`, "i");
+      const re = new RegExp(`(?<![\\p{L}\\p{N}])${alias}(?![\\p{L}\\p{N}])`, "iu");
       const match = fullText.match(re);
       if (match && !seen.has(def.canonical)) {
         seen.add(def.canonical);
@@ -234,7 +298,7 @@ function extractLanguages(languageSectionText: string, fullText: string): Extrac
     for (const lang of LANGUAGE_NAMES) {
       if (seen.has(lang.canonical)) continue;
       for (const alias of lang.aliases) {
-        const re = new RegExp(`(?<![\\w])${alias}(?![\\w])`, "i");
+        const re = new RegExp(`(?<![\\p{L}\\p{N}])${alias}(?![\\p{L}\\p{N}])`, "iu");
         if (re.test(haystack)) {
           // Look for a level near the language mention (same line ideally).
           const lineWithLang = haystack
@@ -279,6 +343,232 @@ function extractCertifications(sectionText: string): ExtractedCertification[] {
     });
 }
 
+// Built by hand rather than via wordBoundaryRegex: every alternative here
+// needs a trailing boundary check EXCEPT "bac", which must be allowed to
+// continue into more letters ("baccalauréat") or "+2" ("bac+2") — a
+// uniform trailing (?!\p{L}\p{N}) after "bac" itself would reject
+// "baccalauréat" outright. The leading boundary is still shared and only
+// needs stating once, ahead of the whole group.
+const DEGREE_KEYWORDS_RE = new RegExp(
+  "(?<![\\p{L}\\p{N}])(?:" +
+    [
+      String.raw`bac(?:c|\+\s*\d|(?![\p{L}\p{N}]))`, // bac, bac+2, baccalauréat
+      "bts",
+      "but",
+      "dut",
+      "bt",
+      "licence",
+      "master",
+      String.raw`ing[eé]nieur`,
+      "mba",
+      "doctorat",
+      "cap",
+      "bep",
+      "deug",
+      String.raw`classe pr[eé]paratoire`,
+      "brevet",
+    ]
+      .map((alt, i) => (i === 0 ? alt : `${alt}(?![\\p{L}\\p{N}])`))
+      .join("|") +
+    ")",
+  "iu"
+);
+const INSTITUTION_KEYWORDS_RE = wordBoundaryRegex([
+  String.raw`lyc[eé]e`,
+  String.raw`universit[eé]`,
+  "iut",
+  String.raw`[eé]cole`,
+  "institut",
+  String.raw`coll[eè]ge`,
+  String.raw`facult[eé]`,
+]);
+const CONTRACT_KEYWORDS_RE =
+  /\b(int[eé]rim|cdi|cdd|stage|saisonnier|b[eé]n[eé]vole|alternance|apprentissage|freelance)\b/i;
+const YEAR_RE = /\b(20\d{2})\b/;
+
+/**
+ * Content-signature scan across the WHOLE document, independent of which
+ * section header (if any) precedes a line.
+ *
+ * Why not scope to the "Formation"/"Expériences" sections like the rest of
+ * this file: a real-world multi-column CV layout (sidebar of labels next
+ * to a wide content column, common in modern templates) gets its section
+ * headers and their content pulled apart by any linear text extraction —
+ * pdf.js/pdf-parse read text by vertical position, so a header in a left
+ * rail ends up glued to unrelated text from the main column on the same
+ * visual row, and by the time a "Formation" heading is encountered in the
+ * byte stream it may already be several unrelated headings away from the
+ * degree text it actually labels. A stateful "current section" pointer
+ * then attributes real formation content to whatever section happened to
+ * be last matched — e.g. an availability line ("Vendredi 17h30") ending
+ * up filed as an education entry, or a genuine diploma ending up under
+ * "Centres d'intérêt". Scanning for the content's own signature (a degree
+ * keyword, a job-title/contract-type pattern) sidesteps that entirely: it
+ * doesn't matter what order headers appear in, or whether they were
+ * detected at all.
+ */
+function extractEducationsFromText(fullText: string): ExtractedEducation[] {
+  const lines = fullText.split("\n").map((l) => l.trim());
+  const entries: ExtractedEducation[] = [];
+  const MAX_BLOCK_LINES = 5;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line || !DEGREE_KEYWORDS_RE.test(line)) continue;
+
+    const block: string[] = [line];
+    let j = i + 1;
+    while (j < lines.length && block.length < MAX_BLOCK_LINES) {
+      const next = lines[j];
+      if (!next) break;
+      if (DEGREE_KEYWORDS_RE.test(next)) break; // next education entry starts
+      if (isExperienceStart(next)) break; // don't swallow into a following job entry
+      block.push(next);
+      j++;
+      // Stop as soon as the block looks complete (mentions an institution
+      // somewhere in it, and just added a line ending in a French-postal-
+      // code-style suffix, e.g. "... (69).") rather than greedily
+      // consuming further lines up to the cap — the block otherwise runs
+      // straight into the next section's content (skills, languages...)
+      // on CVs where paragraph breaks didn't survive text extraction. The
+      // institution name itself can span more than one physical line
+      // ("...Lycée Charles et\nAdrien du Puy, Le Puy-en-Velay (43)"), so
+      // that check looks at the whole block collected so far, not just
+      // the line that was just added.
+      if (INSTITUTION_KEYWORDS_RE.test(block.join(" ")) && /\(\d{2,3}\)\.?\s*$/.test(next)) break;
+    }
+    i = j - 1;
+
+    const blockText = block.join(" ");
+    const instMatch = blockText.match(INSTITUTION_KEYWORDS_RE);
+    let degree: string;
+    let institution: string | null;
+    if (instMatch && instMatch.index !== undefined) {
+      degree = blockText.slice(0, instMatch.index).replace(/[,/]\s*$/, "").trim();
+      institution = blockText.slice(instMatch.index).replace(/\.\s*$/, "").trim();
+    } else {
+      // "<degree> / <institution>" — the other common separator in practice.
+      const slashSplit = blockText.split(/\s*\/\s*/);
+      if (slashSplit.length >= 2) {
+        degree = slashSplit[0].trim();
+        institution = slashSplit.slice(1).join(" / ").trim();
+      } else {
+        degree = blockText.trim();
+        institution = null;
+      }
+    }
+
+    const dateMatch = blockText.match(DATE_RANGE_RE);
+    const yearMatch = !dateMatch ? blockText.match(YEAR_RE) : null;
+    const isCurrent = dateMatch ? /pr[eé]sent|aujourd'?hui|en cours/i.test(dateMatch[2]) : false;
+
+    entries.push({
+      // Never invented: if no institution keyword or "/" separator was
+      // found, we genuinely don't know it — leave it null rather than
+      // reuse the degree text or guess.
+      institution: institution || "Non précisé",
+      degree: degree || null,
+      dateRange: dateMatch ? dateMatch[0] : yearMatch ? yearMatch[0] : null,
+      startDate: dateMatch
+        ? parseFrenchDateFragment(dateMatch[1])
+        : yearMatch
+          ? parseFrenchDateFragment(yearMatch[1])
+          : null,
+      endDate: dateMatch && !isCurrent ? parseFrenchDateFragment(dateMatch[2]) : null,
+    });
+  }
+  return entries;
+}
+
+// The real, reliable "a job entry starts here" signal in practice: a short
+// title (a handful of words, starting with a capital letter) followed by
+// an em-dash or en-dash, then a capitalized company/location. Deliberately
+// NOT a plain hyphen — French job titles are full of hyphenated compounds
+// ("Co-animateur", "maître-nageur") that would otherwise get split in the
+// middle of a single word. Also deliberately NOT "any line with a date
+// range" (an earlier version of this function used that, and it caused a
+// bare formation date like "2022 — En cours" to be misread as a job
+// entry) — a date-only fragment never has a capital letter on both sides
+// of the dash the way an actual "Title — Company" line does.
+const DAY_MONTH_RE =
+  /\b\d{1,2}\s*(janv|f[eé]vr|mars|avr|mai|juin|juil|ao[uû]t|sept|oct|nov|d[eé]c)/i;
+
+function matchTitleDashCompany(line: string): { title: string; rest: string } | null {
+  const m = line.match(/([\p{Lu}][\p{L}0-9'’.() /-]{1,45}?)\s*(?:[—–]|\s-\s)\s*([\p{Lu}].+)$/u);
+  if (!m) return null;
+  const title = m[1].trim();
+  if (DATE_RANGE_RE.test(title) || YEAR_RE.test(title)) return null;
+  const wordCount = title.split(/\s+/).filter(Boolean).length;
+  if (wordCount === 0 || wordCount > 6) return null;
+  // A title/company dash and a plain enumeration dash ("Activité A – détail
+  // – détail") look identical by shape alone. What distinguishes an actual
+  // job entry across every case seen in practice: a contract-type word
+  // (intérim, CDI...) or a day+month date somewhere on that same line —
+  // an interest/summary line enumerating things with dashes has neither.
+  if (!CONTRACT_KEYWORDS_RE.test(line) && !DAY_MONTH_RE.test(line)) return null;
+  return { title, rest: m[2].trim() };
+}
+
+function isExperienceStart(line: string): boolean {
+  return matchTitleDashCompany(line) !== null;
+}
+
+function extractExperiencesFromText(fullText: string): ExtractedExperience[] {
+  const lines = fullText.split("\n").map((l) => l.trim());
+  const entries: ExtractedExperience[] = [];
+  const MAX_BLOCK_LINES = 10;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line || !isExperienceStart(line)) continue;
+
+    const block: string[] = [line];
+    let j = i + 1;
+    while (j < lines.length && block.length < MAX_BLOCK_LINES) {
+      const next = lines[j];
+      if (!next) break;
+      if (isExperienceStart(next)) break; // next job entry starts
+      if (DEGREE_KEYWORDS_RE.test(next)) break; // don't swallow into an education entry
+      block.push(next);
+      j++;
+    }
+    i = j - 1;
+
+    const match = matchTitleDashCompany(line);
+    // isExperienceStart already checked this line matches, so match is
+    // non-null here — the "!" documents that invariant rather than
+    // silencing a real possibility of null.
+    const title = (match!.title.replace(/\(\s*[^)]*\)\s*$/, "").trim()) || "Poste";
+    const companyLine = match!.rest;
+
+    const bodyLines = block.slice(1);
+    const bulletLines = bodyLines.filter((l) => /^[•*-]\s?/.test(l));
+    const nonBulletLines = bodyLines.filter((l) => !/^[•*-]\s?/.test(l) && !DATE_RANGE_RE.test(l) && !YEAR_RE.test(l));
+    const company = (companyLine || nonBulletLines[0] || "").replace(/\(\d+.*$/, "").trim();
+    const description = bulletLines.map((l) => l.replace(/^[•*-]\s?/, "").trim()).join(" ; ");
+
+    const blockText = block.join(" ");
+    const dateMatch = blockText.match(DATE_RANGE_RE);
+    const yearMatch = !dateMatch ? blockText.match(YEAR_RE) : null;
+    const isCurrent = dateMatch ? /pr[eé]sent|aujourd'?hui|en cours/i.test(dateMatch[2]) : false;
+
+    entries.push({
+      company: company || "Non précisée",
+      title: title.replace(/[-–—]+$/, "").trim(),
+      dateRange: dateMatch ? dateMatch[0] : yearMatch ? yearMatch[0] : null,
+      startDate: dateMatch
+        ? parseFrenchDateFragment(dateMatch[1])
+        : yearMatch
+          ? parseFrenchDateFragment(yearMatch[1])
+          : null,
+      endDate: dateMatch && !isCurrent ? parseFrenchDateFragment(dateMatch[2]) : null,
+      isCurrent,
+      description,
+    });
+  }
+  return entries;
+}
+
 function extractExperiences(sectionText: string): ExtractedExperience[] {
   if (!sectionText) return [];
   const blocks = splitIntoEntryBlocks(sectionText);
@@ -318,8 +608,7 @@ function extractExperiences(sectionText: string): ExtractedExperience[] {
 function extractEducations(sectionText: string): ExtractedEducation[] {
   if (!sectionText) return [];
   const blocks = splitIntoEntryBlocks(sectionText);
-  const degreeKeywords =
-    /(bac(?:\s*\+\s*\d)?|bts|but|dut|bt\b|licence|master|ing[eé]nieur|mba|doctorat|cap|bep|deug|classe pr[eé]paratoire|brevet)/i;
+  const degreeKeywords = DEGREE_KEYWORDS_RE;
 
   return blocks.map((block) => {
     const lines = block.split("\n").filter(Boolean);
@@ -406,7 +695,15 @@ function extractInterests(sectionText: string): string[] {
     .split(/[\n,;•·]/)
     .map((s) => s.trim().replace(/^[-–—*]\s*/, ""))
     .filter((s) => s.length > 1 && s.length < 60);
-  return Array.from(new Set(items));
+  const deduped = Array.from(new Set(items));
+  // Section-header detection can still misfire on a badly-scrambled
+  // multi-column layout and silently accumulate the rest of the document
+  // under "interests" — a real 3-6 item hobby list producing 20+ entries
+  // is a strong sign of exactly that, not a strong sign this is a CV with
+  // dozens of listed hobbies. Discarding the whole (unreliable) batch
+  // follows the same rule this module applies everywhere else: better to
+  // show nothing than to show data that's actually mislabeled.
+  return deduped.length > 15 ? [] : deduped;
 }
 
 const LINK_PATTERNS: { label: string; re: RegExp }[] = [
@@ -460,12 +757,24 @@ export function parseResume(rawText: string): ResumeExtraction {
   const city = extractCity(rawText);
 
   const skills = extractSkills(rawText);
+  // Content-signature scan of the full document is the primary path (see
+  // extractExperiencesFromText's doc comment for why: section headers and
+  // their content can end up out of order once a multi-column PDF layout
+  // is linearized). Section-scoped extraction is a fallback for the case
+  // where neither a degree keyword nor a job-title/contract pattern was
+  // found anywhere — better than nothing for a CV this heuristic can't read.
+  const experiencesFromContent = extractExperiencesFromText(rawText);
   const experiences = dedupeBy(
-    extractExperiences((sections.get("experience") ?? []).join("\n")),
+    experiencesFromContent.length > 0
+      ? experiencesFromContent
+      : extractExperiences((sections.get("experience") ?? []).join("\n")),
     (e) => `${e.title}@${e.company}`
   );
+  const educationsFromContent = extractEducationsFromText(rawText);
   const educations = dedupeBy(
-    extractEducations((sections.get("education") ?? []).join("\n")),
+    educationsFromContent.length > 0
+      ? educationsFromContent
+      : extractEducations((sections.get("education") ?? []).join("\n")),
     (e) => `${e.degree ?? ""}@${e.institution}`
   );
   const languages = extractLanguages((sections.get("languages") ?? []).join("\n"), rawText);
