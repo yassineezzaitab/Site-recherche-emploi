@@ -3,6 +3,7 @@ import { Inter, Lexend } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { ServiceWorkerRegister } from "./ServiceWorkerRegister";
+import { Footer } from "@/components/layout/Footer";
 import { getSession } from "@/lib/auth/session";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
@@ -39,6 +40,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="fr" className={`${inter.variable} ${lexend.variable}`}>
       <body className="min-h-screen font-sans">
         <Providers session={session}>{children}</Providers>
+        <Footer />
         <ServiceWorkerRegister />
       </body>
     </html>

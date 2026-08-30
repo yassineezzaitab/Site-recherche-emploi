@@ -13,6 +13,7 @@ import {
   SLOTS,
 } from "@/lib/validation/profile";
 import { contractLabel, experienceLabel, remoteLabel, dayLabel, slotLabel } from "@/lib/format";
+import { suggestProfessions, suggestSkills, suggestSectors } from "@/lib/search/suggest";
 
 interface SkillItem { name: string; }
 interface ExperienceItem {
@@ -232,6 +233,7 @@ export default function ProfilePage() {
             onAdd={(v) => setProfile({ ...profile, desiredTitles: [...profile.desiredTitles, v] })}
             onRemove={(i) => setProfile({ ...profile, desiredTitles: profile.desiredTitles.filter((_, idx) => idx !== i) })}
             placeholder="Ex : Vendeur, Développeur web..."
+            suggest={suggestProfessions}
           />
         </Field>
         <Field label="Secteurs">
@@ -242,6 +244,7 @@ export default function ProfilePage() {
             onAdd={(v) => setProfile({ ...profile, sectors: [...profile.sectors, v] })}
             onRemove={(i) => setProfile({ ...profile, sectors: profile.sectors.filter((_, idx) => idx !== i) })}
             placeholder="Ex : Marketing, Commerce..."
+            suggest={suggestSectors}
           />
         </Field>
         <Field label="Types de contrat">
@@ -342,6 +345,7 @@ export default function ProfilePage() {
           onAdd={(v) => setSkills([...skills, { name: v }])}
           onRemove={(i) => setSkills(skills.filter((_, idx) => idx !== i))}
           placeholder="Ajouter une compétence"
+          suggest={suggestSkills}
         />
       </div>
 
@@ -450,13 +454,24 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 }
 
 function TagInput({
-  items, draft, setDraft, onAdd, onRemove, placeholder,
+  items, draft, setDraft, onAdd, onRemove, placeholder, suggest,
 }: {
   items: string[]; draft: string; setDraft: (v: string) => void;
   onAdd: (v: string) => void; onRemove: (i: number) => void; placeholder?: string;
+  /** Optional: e.g. suggestProfessions — returns live suggestions for the current draft text. */
+  suggest?: (query: string) => { label: string; meta?: string }[];
 }) {
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestions = suggest && draft.trim().length >= 2 ? suggest(draft) : [];
+
+  function commit(value: string) {
+    onAdd(value);
+    setDraft("");
+    setShowSuggestions(false);
+  }
+
   return (
-    <div>
+    <div className="relative">
       <div className="flex flex-wrap gap-2">
         {items.map((item, i) => (
           <span key={`${item}-${i}`} className="badge bg-ink-100 text-ink-700">
@@ -470,14 +485,33 @@ function TagInput({
         placeholder={placeholder}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
+        onFocus={() => setShowSuggestions(true)}
+        onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && draft.trim()) {
             e.preventDefault();
-            onAdd(draft.trim());
-            setDraft("");
+            commit(draft.trim());
           }
         }}
+        autoComplete="off"
       />
+      {showSuggestions && suggestions.length > 0 && (
+        <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border border-ink-200 bg-white shadow-lg">
+          {suggestions.map((s) => (
+            <li key={s.label}>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => commit(s.label)}
+                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-ink-50"
+              >
+                <span className="text-ink-800">{s.label}</span>
+                {s.meta && <span className="shrink-0 text-xs text-ink-400">{s.meta}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
