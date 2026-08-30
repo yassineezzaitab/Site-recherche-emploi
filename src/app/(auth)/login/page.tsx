@@ -4,6 +4,7 @@ import { useState, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 
 function LoginForm() {
   const searchParams = useSearchParams();
@@ -57,9 +58,8 @@ function LoginForm() {
         </div>
         <div>
           <label className="label" htmlFor="password">Mot de passe</label>
-          <input
+          <PasswordInput
             id="password"
-            type="password"
             required
             className="input"
             value={password}
