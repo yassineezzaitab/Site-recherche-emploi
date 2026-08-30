@@ -96,8 +96,10 @@ export const adzunaSource: JobSourceAdapter = {
 
     const res = await fetch(`${SEARCH_URL}?${params.toString()}`);
     if (!res.ok) {
-      console.error("[adzunaSource] search request failed", res.status);
-      return [];
+      // Throw rather than return [] so a failed sync is recorded as such
+      // (JobSource.lastSyncOk = false) instead of looking identical to "0
+      // jobs matched right now".
+      throw new Error(`search request failed with status ${res.status}`);
     }
     const data = await res.json();
     const results: AdzunaResult[] = data.results ?? [];

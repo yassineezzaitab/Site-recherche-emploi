@@ -18,11 +18,19 @@ export const ALL_SOURCES: JobSourceAdapter[] = [
 ];
 
 export function getConfiguredSources(): JobSourceAdapter[] {
-  const appMode = (process.env.APP_MODE || "demo").trim();
+  // IMPORTANT: unlike most env flags here, this one must NOT default to
+  // "demo" when unset — an operator forgetting to set APP_MODE on a real
+  // deployment must never silently serve fictional listings to real users.
+  // Demo mode is opt-in only, via an explicit APP_MODE=demo (local dev).
+  const appMode = (process.env.APP_MODE || "").trim().toLowerCase();
   if (appMode === "demo") return [demoSource];
-  // Production mode: use every real source that has valid credentials,
-  // and fall back to demo data if none are configured yet so the app
-  // never shows an empty results page.
+
+  // Any real, usable source — RemoteOK needs zero configuration, so this
+  // is non-empty the moment APP_MODE isn't explicitly "demo".
   const real = ALL_SOURCES.filter((s) => s.kind !== "DEMO" && s.isConfigured());
-  return real.length > 0 ? real : [demoSource];
+  if (real.length > 0) return real;
+
+  // Unreachable once deployed (RemoteOK alone guarantees the branch above),
+  // but keeps local dev usable with no configuration and no network access.
+  return [demoSource];
 }

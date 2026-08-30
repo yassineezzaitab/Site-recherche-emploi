@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { Sparkles, FileText, Target, Bell, ShieldCheck } from "lucide-react";
+import { PublicHeader } from "@/components/layout/PublicHeader";
+import { Footer } from "@/components/layout/Footer";
 
 const FEATURES = [
   {
@@ -27,22 +29,10 @@ const FEATURES = [
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-brand-50 via-white to-white">
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
-        <span className="font-display text-xl font-bold text-brand-700">JobMatch</span>
-        <div className="flex items-center gap-3">
-          <Link href="/login" className="btn-ghost">
-            Se connecter
-          </Link>
-          <Link href="/signup" className="btn-primary">
-            Créer un compte
-          </Link>
-        </div>
-      </header>
+      <PublicHeader />
 
       <section className="mx-auto max-w-4xl px-6 pb-16 pt-10 text-center sm:pt-20">
-        <span className="badge mb-6 bg-brand-100 text-brand-700">
-          Mode démo — offres de démonstration incluses
-        </span>
+        <span className="badge mb-6 bg-brand-100 text-brand-700">100% gratuit</span>
         <h1 className="font-display text-4xl font-bold tracking-tight text-ink-950 sm:text-5xl">
           Le bon poste, pas juste une liste d&apos;annonces.
         </h1>
@@ -86,10 +76,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="border-t border-ink-100 py-8 text-center text-xs text-ink-400">
-        JobMatch — projet de démonstration. Les offres non explicitement marquées « démo »
-        proviennent de sources réelles configurées par l&apos;administrateur.
-      </footer>
+      <Footer />
     </div>
   );
 }

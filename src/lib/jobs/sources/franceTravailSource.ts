@@ -54,8 +54,11 @@ async function getAccessToken(): Promise<string | null> {
     body,
   });
   if (!res.ok) {
-    console.error("[franceTravailSource] token request failed", res.status);
-    return null;
+    // Throw rather than return null: getAccessToken() is only ever called
+    // when credentials are configured, so a failure here is a real
+    // operational problem (bad credentials, API down) that must surface as
+    // a failed sync (JobSource.lastSyncOk = false), not look like "0 jobs".
+    throw new Error(`token request failed with status ${res.status}`);
   }
   const data = await res.json();
   return data.access_token ?? null;
@@ -149,8 +152,7 @@ export const franceTravailSource: JobSourceAdapter = {
     });
     // The API returns 206 (Partial Content) on a normal paginated response.
     if (!res.ok && res.status !== 206) {
-      console.error("[franceTravailSource] search request failed", res.status);
-      return [];
+      throw new Error(`search request failed with status ${res.status}`);
     }
     const data = await res.json();
     const offers: Record<string, unknown>[] = data.resultats ?? [];

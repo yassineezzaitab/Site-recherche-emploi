@@ -114,6 +114,7 @@ async function upsertOneJob(sourceRowId: string, job: NormalizedJob): Promise<"c
 export async function ingestAllSources(): Promise<IngestSummary[]> {
   const adapters = getConfiguredSources();
   const summaries: IngestSummary[] = [];
+  const usingDemo = adapters.some((a) => a.kind === "DEMO");
 
   for (const adapter of adapters) {
     const sourceRow = await ensureJobSourceRow(adapter);
@@ -153,8 +154,26 @@ export async function ingestAllSources(): Promise<IngestSummary[]> {
     summaries.push(summary);
   }
 
+  // The moment real sources are in use, any demo listings ingested during
+  // an earlier demo-mode run must stop appearing to real users — don't
+  // just let them quietly expire over the next STALE_AFTER_DAYS days (§20:
+  // demo data must never be mixed into a real user's results).
+  if (!usingDemo) {
+    await deactivateDemoJobs();
+  }
+
   await expireStaleJobs();
   return summaries;
+}
+
+async function deactivateDemoJobs(): Promise<number> {
+  const demoSources = await prisma.jobSource.findMany({ where: { kind: "DEMO" }, select: { id: true } });
+  if (demoSources.length === 0) return 0;
+  const result = await prisma.job.updateMany({
+    where: { isActive: true, sourceId: { in: demoSources.map((s) => s.id) } },
+    data: { isActive: false },
+  });
+  return result.count;
 }
 
 /**
