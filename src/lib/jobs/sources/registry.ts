@@ -18,7 +18,7 @@ export const ALL_SOURCES: JobSourceAdapter[] = [
 ];
 
 export function getConfiguredSources(): JobSourceAdapter[] {
-  const appMode = process.env.APP_MODE || "demo";
+  const appMode = (process.env.APP_MODE || "demo").trim();
   if (appMode === "demo") return [demoSource];
   // Production mode: use every real source that has valid credentials,
   // and fall back to demo data if none are configured yet so the app

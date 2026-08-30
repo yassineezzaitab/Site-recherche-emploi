@@ -25,7 +25,10 @@ let cachedDriver: StorageDriver | null = null;
 
 async function getDriver(): Promise<StorageDriver> {
   if (cachedDriver) return cachedDriver;
-  const kind = process.env.STORAGE_DRIVER || "local";
+  // .trim(): a stray trailing/leading space from copy-pasting the value
+  // into a hosting dashboard's env var field is an easy, otherwise-silent
+  // mistake — it must not turn into "unknown storage driver" in production.
+  const kind = (process.env.STORAGE_DRIVER || "local").trim();
   if (kind === "local") {
     cachedDriver = localDriver;
   } else if (kind === "s3") {

@@ -74,7 +74,7 @@ async function queryBan(query: string): Promise<GeocodeResult | null> {
 
 export async function geocodeAddress(query: string): Promise<GeocodeResult | null> {
   if (!query?.trim()) return null;
-  const provider = process.env.GEOCODING_PROVIDER || "ban";
+  const provider = (process.env.GEOCODING_PROVIDER || "ban").trim();
   if (provider !== "ban") return null;
 
   const normalized = normalizeQuery(query);
