@@ -1,11 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { UploadCloud, Loader2, CheckCircle2, AlertTriangle, FileText } from "lucide-react";
 import type { ResumeExtraction } from "@/lib/resume/parseResume";
 
 const MAX_SIZE_BYTES = 8 * 1024 * 1024;
 const ACCEPTED_EXTENSIONS = [".pdf", ".docx", ".txt"];
+
+// Rotates during analysis so the wait doesn't feel static — reads as
+// ordinary encouragement, but each line quietly echoes a story about
+// patience paying off (a slow-burn mystery, a lone apprentice, a long
+// road to redemption).
+const ANALYZING_MESSAGES = [
+  "On rassemble les indices, comme dans une bonne enquête d'été.",
+  "Chaque compétence compte, un pas de plus vers l'objectif.",
+  "La patience d'aujourd'hui prépare la force de demain.",
+  "Presque terminé…",
+];
 
 function isAcceptedFile(file: File) {
   const name = file.name.toLowerCase();
@@ -16,6 +27,16 @@ export function CvUpload({ onExtracted }: { onExtracted: (extraction: ResumeExtr
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [status, setStatus] = useState<"idle" | "selected" | "uploading" | "done" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [messageIndex, setMessageIndex] = useState(0);
+
+  useEffect(() => {
+    if (status !== "uploading") {
+      setMessageIndex(0);
+      return;
+    }
+    const id = setInterval(() => setMessageIndex((i) => (i + 1) % ANALYZING_MESSAGES.length), 2200);
+    return () => clearInterval(id);
+  }, [status]);
 
   function selectFile(file: File) {
     if (!isAcceptedFile(file)) {
@@ -100,6 +121,7 @@ export function CvUpload({ onExtracted }: { onExtracted: (extraction: ResumeExtr
           <>
             <Loader2 className="animate-spin text-brand-600" size={28} />
             <p className="text-sm text-ink-600">Analyse de {selectedFile?.name}…</p>
+            <p className="text-xs text-ink-400">{ANALYZING_MESSAGES[messageIndex]}</p>
           </>
         ) : status === "done" ? (
           <>
