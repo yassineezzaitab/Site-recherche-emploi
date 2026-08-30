@@ -78,6 +78,12 @@ model Profile {
   headline  String? // e.g. "Étudiant ingénieur — recherche alternance"
   summary   String? @db.Text
 
+  // Profile photo, added manually by the user (CVs are text-only — no
+  // photo extraction). Stored via the same fileStorage abstraction as CVs;
+  // this is just the storage key, never a public URL.
+  photoKey         String?
+  photoContentType String?
+
   // Search criteria
   desiredTitles    String[] // metiers recherches
   sectors          String[]

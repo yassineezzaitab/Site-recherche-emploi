@@ -32,6 +32,9 @@ export async function POST(req: Request) {
     });
     await Promise.all(resumes.map((r) => deleteStoredFile(r.storageKey).catch(() => {})));
 
+    const profile = await prisma.profile.findUnique({ where: { userId }, select: { photoKey: true } });
+    if (profile?.photoKey) await deleteStoredFile(profile.photoKey).catch(() => {});
+
     await prisma.user.delete({ where: { id: userId } });
 
     return NextResponse.json({ ok: true });
