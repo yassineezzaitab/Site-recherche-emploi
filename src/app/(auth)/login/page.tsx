@@ -2,11 +2,10 @@
 
 import { useState, Suspense } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,7 +26,11 @@ function LoginForm() {
       setError("Email ou mot de passe incorrect.");
       return;
     }
-    router.push(searchParams.get("callbackUrl") || "/dashboard");
+    // Full navigation (not router.push) guarantees the freshly-set session
+    // cookie is present on the very next request — router.push can race
+    // ahead of the cookie write on slower mobile connections, which looks
+    // like "signed in but immediately logged out".
+    window.location.href = searchParams.get("callbackUrl") || "/dashboard";
   }
 
   return (

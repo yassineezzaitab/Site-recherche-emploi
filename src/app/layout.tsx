@@ -3,6 +3,7 @@ import { Inter, Lexend } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { ServiceWorkerRegister } from "./ServiceWorkerRegister";
+import { getSession } from "@/lib/auth/session";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 const lexend = Lexend({ subsets: ["latin"], variable: "--font-display" });
@@ -32,11 +33,12 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const session = await getSession();
   return (
     <html lang="fr" className={`${inter.variable} ${lexend.variable}`}>
       <body className="min-h-screen font-sans">
-        <Providers>{children}</Providers>
+        <Providers session={session}>{children}</Providers>
         <ServiceWorkerRegister />
       </body>
     </html>

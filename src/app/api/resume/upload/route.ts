@@ -8,11 +8,6 @@ import { detectFileType, extractText } from "@/lib/resume/extractText";
 import { parseResume } from "@/lib/resume/parseResume";
 
 const MAX_SIZE_BYTES = 8 * 1024 * 1024; // 8 MB
-const ALLOWED_TYPES = [
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "text/plain",
-];
 
 export async function POST(req: Request) {
   try {
@@ -31,8 +26,14 @@ export async function POST(req: Request) {
       return jsonError("Le fichier dépasse la taille maximale autorisée (8 Mo)", 413);
     }
 
+    // detectFileType already trusts either a recognized MIME type or the
+    // file extension. Mobile browsers/OS file pickers are inconsistent
+    // about the MIME type they report (some send "application/octet-stream"
+    // or an empty string for a perfectly valid PDF/DOCX), so we don't add a
+    // second, stricter MIME-only check on top — that used to silently
+    // reject valid uploads from iPad/iPhone/Android file pickers.
     const fileType = detectFileType(file.name, file.type);
-    if (!fileType || (file.type && !ALLOWED_TYPES.includes(file.type))) {
+    if (!fileType) {
       return jsonError("Format non supporté. Formats acceptés : PDF, DOCX, TXT.", 415);
     }
 

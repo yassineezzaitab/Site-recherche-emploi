@@ -43,7 +43,9 @@ export default function SignupPage() {
       router.push("/login");
       return;
     }
-    router.push("/profile?welcome=1");
+    // Full navigation so the fresh session cookie is guaranteed to be
+    // present on the next request (see login/page.tsx for details).
+    window.location.href = "/profile?welcome=1";
   }
 
   return (

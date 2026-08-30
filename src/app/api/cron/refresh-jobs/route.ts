@@ -7,8 +7,14 @@ import { jsonError } from "@/lib/apiResponse";
  * Cron, a GitHub Action, etc.) that can't invoke `npm run refresh:jobs`
  * directly. Protected by a shared secret so only your own scheduler can
  * call it — never expose this URL publicly.
+ *
+ * Both GET and POST are supported: Vercel's native Cron Jobs (vercel.json
+ * `crons`) always invoke via GET and automatically attach
+ * `Authorization: Bearer $CRON_SECRET` when an env var of that exact name
+ * is set on the project — POST stays available for schedulers that can
+ * send a custom method/body (a GitHub Action, cron+curl, etc.).
  */
-export async function POST(req: Request) {
+async function handleRefresh(req: Request) {
   const auth = req.headers.get("authorization");
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return jsonError("Non autorisé", 401);
@@ -16,3 +22,6 @@ export async function POST(req: Request) {
   const summaries = await ingestAllSources();
   return NextResponse.json({ summaries });
 }
+
+export const GET = handleRefresh;
+export const POST = handleRefresh;

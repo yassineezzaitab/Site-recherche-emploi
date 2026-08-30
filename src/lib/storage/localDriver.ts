@@ -1,8 +1,17 @@
 import path from "path";
+import os from "os";
 import fs from "fs/promises";
 import type { StorageDriver } from "./types";
 
-const UPLOAD_ROOT = path.join(process.cwd(), "storage", "uploads");
+// Vercel's serverless filesystem is read-only outside /tmp — writing under
+// process.cwd() there throws EROFS and every upload fails outright. /tmp is
+// writable but ephemeral (wiped between cold starts, not shared across
+// instances), so this remains a stopgap: fine for local dev and for using
+// a file within the request that created it, but not durable storage.
+// STORAGE_DRIVER=s3 is the durable option for production.
+const UPLOAD_ROOT = process.env.VERCEL
+  ? path.join(os.tmpdir(), "jobmatch-uploads")
+  : path.join(process.cwd(), "storage", "uploads");
 
 /** Resolves a storage key to an absolute path, rejecting any path traversal. */
 function resolveSafePath(key: string): string {

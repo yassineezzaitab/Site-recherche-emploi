@@ -11,32 +11,30 @@ import type { JobSourceAdapter, NormalizedJob } from "./types";
  * pipeline simply skips this adapter — the rest of the platform runs fine
  * on demo data alone.
  *
- * HONESTY NOTE (updated during the audit pass): this sandbox has no
- * outbound network access to francetravail.io/.fr (confirmed — every
- * request to those hosts is rejected by the environment's egress proxy
- * before it leaves the container), and no credentials were available
- * either, so this adapter still could not be exercised against the live
- * API end-to-end.
+ * HONESTY NOTE (re-verified in this pass): this sandbox has no outbound
+ * network access to francetravail.fr/.io (every request is rejected by the
+ * environment's egress proxy before it leaves the container), and no
+ * credentials were available either, so this adapter still could not be
+ * exercised against the live API end-to-end.
  *
- * What changed in this pass: the previous version pointed at
- * `pole-emploi.fr` / `pole-emploi.io`, which is the **pre-2024 rebrand**
- * domain — Pôle Emploi became France Travail and the API moved to
- * `entreprise.francetravail.fr` (OAuth token) and `api.francetravail.fr`
- * (search), which the old URLs likely 404 on today. The URLs and field
- * mapping below were corrected using current documentation retrieved via
- * web search (cross-checked across multiple independent sources — the
- * OAuth host in particular is corroborated identically by two unrelated
- * search results), not live-tested. Before relying on this in production:
- * sign in to https://francetravail.io/data/api/offres-emploi yourself,
- * confirm the exact search path (the docs portal itself may show either
- * `.../offres/search` or `.../offres` depending on the API version you
- * subscribe to) and diff it against SEARCH_URL below, then run
- * `npm run refresh:jobs` and check the console for mapping issues.
+ * What changed in this pass: the search host was corrected from
+ * `api.francetravail.fr` to `api.francetravail.io` — cross-checked via
+ * GitHub code search across 9 independent, unrelated real-world
+ * repositories that all hardcode
+ * `https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search`
+ * for this exact endpoint, several dated well after the 2024 rebrand. The
+ * OAuth token host (`entreprise.francetravail.fr`) was already correct and
+ * is unchanged — token issuance and job search live on different hosts,
+ * which is easy to trip over. Still not live-tested. Before relying on
+ * this in production: sign in to https://francetravail.io/data/api/offres-emploi
+ * yourself, confirm the exact search path against your subscribed API
+ * version, then run `npm run refresh:jobs` and check the console for
+ * mapping issues.
  */
 
 const TOKEN_URL =
   "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=%2Fpartenaire";
-const SEARCH_URL = "https://api.francetravail.fr/partenaire/offresdemploi/v2/offres/search";
+const SEARCH_URL = "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search";
 
 async function getAccessToken(): Promise<string | null> {
   const clientId = process.env.FRANCE_TRAVAIL_CLIENT_ID;
