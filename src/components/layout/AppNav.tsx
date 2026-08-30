@@ -17,6 +17,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
+import { Logo } from "@/components/ui/Logo";
 
 const LINKS = [
   { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
@@ -52,8 +53,8 @@ export function AppNav() {
   return (
     <>
       <div className="flex items-center justify-between border-b border-ink-100 bg-white px-4 py-3 lg:hidden">
-        <Link href="/dashboard" className="font-display text-lg font-bold text-brand-700">
-          JobMatch
+        <Link href="/dashboard">
+          <Logo />
         </Link>
         <button onClick={() => setOpen(!open)} className="btn-ghost p-2" aria-label="Menu">
           {open ? <X size={20} /> : <Menu size={20} />}
@@ -66,8 +67,8 @@ export function AppNav() {
           open ? "flex" : "hidden lg:flex"
         )}
       >
-        <Link href="/dashboard" className="mb-6 hidden font-display text-xl font-bold text-brand-700 lg:block">
-          JobMatch
+        <Link href="/dashboard" className="mb-6 hidden lg:block">
+          <Logo size={32} />
         </Link>
         {LINKS.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + "/");

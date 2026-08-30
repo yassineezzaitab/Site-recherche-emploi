@@ -28,10 +28,17 @@ export async function GET() {
       where: { userId },
       include: fullProfileInclude,
     });
-    return NextResponse.json({ profile });
+    return NextResponse.json({ profile: withPhotoFlag(profile) });
   } catch (err) {
     return handleApiError(err);
   }
+}
+
+/** Never leak the internal storage key to the client — just whether a photo exists. */
+function withPhotoFlag<T extends { photoKey: string | null } | null>(profile: T) {
+  if (!profile) return profile;
+  const { photoKey: _photoKey, ...rest } = profile;
+  return { ...rest, hasPhoto: Boolean(_photoKey) };
 }
 
 const updateBodySchema = z.object({
@@ -146,7 +153,7 @@ export async function PUT(req: Request) {
       where: { userId },
       include: fullProfileInclude,
     });
-    return NextResponse.json({ profile });
+    return NextResponse.json({ profile: withPhotoFlag(profile) });
   } catch (err) {
     return handleApiError(err);
   }

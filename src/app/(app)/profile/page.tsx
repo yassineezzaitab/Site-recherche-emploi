@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Plus, Trash2, CheckCircle2 } from "lucide-react";
 import { CvUpload } from "@/components/profile/CvUpload";
+import { ProfilePhoto } from "@/components/profile/ProfilePhoto";
 import { ExtractionReview, type ReviewedData } from "@/components/profile/ExtractionReview";
 import type { ResumeExtraction } from "@/lib/resume/parseResume";
 import {
@@ -67,6 +68,7 @@ export default function ProfilePage() {
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasCoordinates, setHasCoordinates] = useState(true);
+  const [hasPhoto, setHasPhoto] = useState(false);
 
   const loadProfile = useCallback(async () => {
     const res = await fetch("/api/profile");
@@ -85,6 +87,7 @@ export default function ProfilePage() {
         mobilityNotes: p.mobilityNotes ?? "", constraints: p.constraints ?? "",
       });
       setHasCoordinates(!p.city || (p.latitude != null && p.longitude != null));
+      setHasPhoto(Boolean(p.hasPhoto));
       setSkills(p.skills.map((s: { skill: { name: string } }) => ({ name: s.skill.name })));
       setExperiences(p.experiences);
       setEducations(p.educations);
@@ -189,6 +192,7 @@ export default function ProfilePage() {
       {/* Identity */}
       <div className="card space-y-4">
         <h2 className="font-display text-lg font-semibold text-ink-900">Identité</h2>
+        <ProfilePhoto hasPhoto={hasPhoto} onChange={setHasPhoto} />
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Prénom">
             <input className="input" value={profile.firstName} onChange={(e) => setProfile({ ...profile, firstName: e.target.value })} />
