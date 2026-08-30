@@ -5,6 +5,7 @@ import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { PasswordInput } from "@/components/ui/PasswordInput";
+import { Logo } from "@/components/ui/Logo";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -63,6 +64,7 @@ export default function SignupPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-ink-50 px-4 py-10">
       <form onSubmit={handleSubmit} className="card w-full max-w-sm">
+        <Logo size={36} className="mb-4" />
         <h1 className="font-display text-2xl font-bold text-ink-950">Créer un compte</h1>
         <p className="mt-1 text-sm text-ink-500">
           Gratuit. Vous pourrez importer votre CV juste après.

@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { Logo } from "@/components/ui/Logo";
 
 export function PublicHeader() {
   const { data: session } = useSession();
   return (
     <header className="border-b border-ink-100 bg-white">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-        <Link href="/" className="font-display text-lg font-bold text-brand-700">
-          JobMatch
+        <Link href="/">
+          <Logo />
         </Link>
         {session ? (
           <Link href="/dashboard" className="btn-secondary">Mon tableau de bord</Link>
